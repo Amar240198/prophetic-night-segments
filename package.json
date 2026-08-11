@@ -19,6 +19,7 @@
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
     "@prophetic-night/night-engine": "workspace:*",
+    "@prophetic-night/prayer-providers": "workspace:*",
     "@vercel/analytics": "^2.0.1",
     "next": "16.2.11",
     "react": "19.2.4",

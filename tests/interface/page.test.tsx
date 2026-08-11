@@ -11,6 +11,9 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  Object.assign(navigator, {
+    clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
+  });
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -49,7 +52,54 @@ describe("Prophetic Night Segments interface", () => {
 
     await waitFor(() => expect(screen.getByText("Six-part timeline")).toBeInTheDocument());
     expect(screen.getAllByText("LAST THIRD")).toHaveLength(2);
-    expect(screen.getByText(/beginning of Part 5/)).toBeInTheDocument();
+    expect(screen.getAllByText(/beginning of Part 5/).length).toBeGreaterThan(0);
+    expect(screen.getByText("Alarm planning")).toBeInTheDocument();
+    expect(screen.getByText("Developer output")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
+    expect(navigator.clipboard.writeText).toHaveBeenCalled();
+  });
+
+  it("calculates from trusted manual timetable values without calling a provider", async () => {
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("Prayer-time source"), {
+      target: { value: "manual" },
+    });
+    fireEvent.change(screen.getByLabelText("Service date"), {
+      target: { value: "2026-07-23" },
+    });
+    fireEvent.change(screen.getByLabelText("Maghrib"), { target: { value: "21:02" } });
+    fireEvent.change(screen.getByLabelText(/Following Fajr/), { target: { value: "03:15" } });
+    fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
+
+    await screen.findByText("Six-part timeline");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(screen.getByText("Trusted timetable / manual input")).toBeInTheDocument();
+  });
+
+  it("requests a fresh precise browser location", () => {
+    const getCurrentPosition = vi
+      .fn()
+      .mockImplementation((success) =>
+        success({ coords: { latitude: 51.5007292, longitude: -0.1246254, accuracy: 7.4 } }),
+      );
+    Object.defineProperty(navigator, "geolocation", {
+      configurable: true,
+      value: { getCurrentPosition },
+    });
+    render(<Home />);
+    fireEvent.change(screen.getByLabelText("Prayer-time source"), {
+      target: { value: "coordinates" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Use my precise location" }));
+
+    expect(getCurrentPosition).toHaveBeenCalledWith(expect.any(Function), expect.any(Function), {
+      enableHighAccuracy: true,
+      maximumAge: 0,
+      timeout: 15_000,
+    });
+    expect(screen.getByLabelText("Latitude")).toHaveValue(51.5007292);
+    expect(screen.getByLabelText("Longitude")).toHaveValue(-0.1246254);
+    expect(screen.getByText(/approximately 7 m accuracy/)).toBeInTheDocument();
   });
 
   it("surfaces stable provider errors without exposing internals", async () => {

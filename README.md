@@ -2,7 +2,7 @@
 
 The canonical full-stack repository for a provider-agnostic night-segmentation engine. It divides a supplied interval from Maghrib to the following Fajr into six mathematically exact parts and three conventional thirds, while keeping prayer-time sourcing outside the mathematical engine.
 
-The production-facing web application is the Next.js app at the repository root. The repository also contains a pure TypeScript engine, stable shared types, a typed SDK, provider adapters, a versioned Fastify API, integration and property tests, documentation, examples, and a native SwiftUI reference app.
+The production-facing web application is the Next.js app at the repository root. It supports published and astronomical prayer-time providers, precise browser coordinates, trusted manual timetable input, demonstration fixtures, configurable alarm planning, calendar export, and exact developer output. The repository also contains a pure TypeScript engine, stable shared types, a typed SDK, provider adapters, versioned Next.js and Fastify APIs, integration and property tests, documentation, examples, and a native SwiftUI reference app.
 
 ## Domain model
 
@@ -34,6 +34,8 @@ pnpm dev:api
 ```
 
 The API is then available at `http://localhost:3001/api/v1`, with OpenAPI documentation at `http://localhost:3001/api/docs`.
+
+The canonical Next.js deployment also exposes `POST /api/v1/night/calculate` and `POST /api/v1/night/calculate-from-coordinates`. Provider credentials, if a configured adapter requires them, remain server-side.
 
 ## Quality gates
 
@@ -78,7 +80,7 @@ ios                         Native SwiftUI reference implementation and tests
 
 This repository supersedes the former separate local prototype. All workspace packages now use the `@prophetic-night/*` scope. Integrators using a pre-release local build should update imports accordingly; calculation schemas and behavior remain unchanged.
 
-There is one canonical web application: the root Next.js app. The previous Vite demonstration was intentionally not retained as a second runnable website; its shared engine, API, SDK, tests, providers, documentation, examples, and iOS capabilities were migrated here.
+There is one canonical web application: the root Next.js app. The previous Vite demonstration was intentionally not retained as a second runnable website; its manual-input, geolocation, alarm-planning, calendar-export, developer-output, shared-engine, API, SDK, test, provider, documentation, example, and iOS capabilities were migrated or superseded here.
 
 ## Religious framing
 

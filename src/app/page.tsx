@@ -1,6 +1,10 @@
 "use client";
 
+import { Temporal } from "@js-temporal/polyfill";
 import { calculateNightSegments as calculateSharedNightSegments } from "@prophetic-night/night-engine";
+import type { NightCalculationInput, NightCalculationResult } from "@prophetic-night/night-engine";
+import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
+import { ScheduleTools } from "@/components/ScheduleTools";
 import { useMemo, useState } from "react";
 
 type Activity = "Initial sleep" | "Prayer" | "Final sleep";
@@ -35,6 +39,10 @@ type LivePrayerTimes = {
   juristicSchool: string;
   source: string;
   serviceDate: string;
+};
+
+type CoordinateCalculationResponse = NightCalculationResult & {
+  prayerTimes: { provider: string; calculationMethod: string; timeZone: string };
 };
 
 const locations = [
@@ -293,12 +301,7 @@ const thirdByPart: Segment["third"][] = [
  * Each boundary is derived from the original Maghrib instant and total duration.
  * It never repeatedly adds a rounded sixth. B6 is always the supplied Fajr.
  */
-function calculateNightSegments(maghrib: string, fajr: string): Calculation {
-  const result = calculateSharedNightSegments({
-    maghrib,
-    fajr,
-    timeZone: "UTC",
-  });
+function mapNightSegments(result: NightCalculationResult): Calculation {
   const boundaries = result.boundaries.map((boundary) => boundary.instant);
   const segments = result.segments.map((segment): Segment => ({
     number: segment.number,
@@ -374,9 +377,18 @@ export default function Home() {
   const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState(3);
   const [school, setSchool] = useState(0);
-  const [prayerTimeSource, setPrayerTimeSource] = useState<"london-unified" | "aladhan">(
-    "london-unified",
-  );
+  const [prayerTimeSource, setPrayerTimeSource] = useState<
+    "london-unified" | "aladhan" | "coordinates" | "manual"
+  >("london-unified");
+  const [latitude, setLatitude] = useState("51.5074");
+  const [longitude, setLongitude] = useState("-0.1278");
+  const [coordinateTimeZone, setCoordinateTimeZone] = useState("Europe/London");
+  const [locating, setLocating] = useState(false);
+  const [locationAccuracy, setLocationAccuracy] = useState<number | null>(null);
+  const [manualMaghrib, setManualMaghrib] = useState("21:02");
+  const [manualFajr, setManualFajr] = useState("03:15");
+  const [manualTimeZone, setManualTimeZone] = useState("Europe/London");
+  const [fajrBufferMinutes, setFajrBufferMinutes] = useState(20);
   const [latitudeAdjustmentMethod, setLatitudeAdjustmentMethod] = useState(3);
   const [midnightMode, setMidnightMode] = useState(0);
   const [shafaq, setShafaq] = useState("general");
@@ -385,24 +397,19 @@ export default function Home() {
   const [loadingLive, setLoadingLive] = useState(false);
   const [providerError, setProviderError] = useState("");
   const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(null);
-  const [submitted, setSubmitted] = useState<{
-    maghrib: string;
-    fajr: string;
-    timeZone: string;
-  } | null>(null);
+  const [submitted, setSubmitted] = useState<NightCalculationInput | null>(null);
 
   const calculation = useMemo(() => {
-    if (!submitted) return { result: null, error: "" };
+    if (!submitted) return { result: null, engineResult: null, error: "" };
     try {
       // Validate the display timezone independently from interval arithmetic.
       new Intl.DateTimeFormat("en", { timeZone: submitted.timeZone }).format(0);
-      return {
-        result: calculateNightSegments(submitted.maghrib, submitted.fajr),
-        error: "",
-      };
+      const engineResult = calculateSharedNightSegments(submitted);
+      return { result: mapNightSegments(engineResult), engineResult, error: "" };
     } catch (error) {
       return {
         result: null,
+        engineResult: null,
         error: error instanceof Error ? error.message : "Calculation failed.",
       };
     }
@@ -414,6 +421,79 @@ export default function Home() {
     setProviderError("");
 
     try {
+      if (prayerTimeSource === "coordinates") {
+        const numericLatitude = Number(latitude);
+        const numericLongitude = Number(longitude);
+        if (
+          !Number.isFinite(numericLatitude) ||
+          numericLatitude < -90 ||
+          numericLatitude > 90 ||
+          !Number.isFinite(numericLongitude) ||
+          numericLongitude < -180 ||
+          numericLongitude > 180
+        ) {
+          throw new Error("Enter valid latitude and longitude values.");
+        }
+        const response = await fetch("/api/v1/night/calculate-from-coordinates", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            latitude: numericLatitude,
+            longitude: numericLongitude,
+            serviceDate,
+            timeZone: coordinateTimeZone,
+            calculationMethod: method,
+          }),
+        });
+        const body = (await response.json()) as CoordinateCalculationResponse & {
+          error?: { message?: string };
+        };
+        if (!response.ok)
+          throw new Error(body.error?.message ?? "Prayer times could not be loaded.");
+        setProviderInfo({
+          maghrib: body.input.maghrib,
+          fajr: body.input.fajr,
+          timeZone: body.input.timeZone,
+          location: `${numericLatitude.toFixed(5)}, ${numericLongitude.toFixed(5)}`,
+          calculationMethod: body.prayerTimes.calculationMethod,
+          juristicSchool: "Provider default",
+          source: body.prayerTimes.provider,
+          serviceDate,
+        });
+        setSubmitted({ ...body.input, fajrWakeBufferMinutes: fajrBufferMinutes });
+        return;
+      }
+      if (prayerTimeSource === "manual") {
+        const date = Temporal.PlainDate.from(serviceDate);
+        const maghrib = Temporal.PlainDateTime.from(`${date.toString()}T${manualMaghrib}`)
+          .toZonedDateTime(manualTimeZone, { disambiguation: "reject" })
+          .toInstant()
+          .toString();
+        const fajr = Temporal.PlainDateTime.from(
+          `${date.add({ days: 1 }).toString()}T${manualFajr}`,
+        )
+          .toZonedDateTime(manualTimeZone, { disambiguation: "reject" })
+          .toInstant()
+          .toString();
+        const manualTimes: LivePrayerTimes = {
+          maghrib,
+          fajr,
+          timeZone: manualTimeZone,
+          location: "Trusted timetable / manual input",
+          calculationMethod: "Supplied by user",
+          juristicSchool: "Not applicable",
+          source: "Manual input",
+          serviceDate,
+        };
+        setProviderInfo(manualTimes);
+        setSubmitted({
+          maghrib,
+          fajr,
+          timeZone: manualTimeZone,
+          fajrWakeBufferMinutes: fajrBufferMinutes,
+        });
+        return;
+      }
       const parameters = new URLSearchParams({
         city: prayerTimeSource === "london-unified" ? "London" : city,
         country: prayerTimeSource === "london-unified" ? "United Kingdom" : countryCode,
@@ -446,6 +526,7 @@ export default function Home() {
         maghrib: prayerTimes.maghrib,
         fajr: prayerTimes.fajr,
         timeZone: prayerTimes.timeZone,
+        fajrWakeBufferMinutes: fajrBufferMinutes,
       });
     } catch (error) {
       setProviderError(
@@ -456,7 +537,53 @@ export default function Home() {
     }
   }
 
+  function usePreciseLocation() {
+    setProviderError("");
+    if (!navigator.geolocation) {
+      setProviderError("This browser does not provide geolocation. Enter coordinates manually.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => {
+        setLatitude(String(coords.latitude));
+        setLongitude(String(coords.longitude));
+        setLocationAccuracy(coords.accuracy);
+        const browserTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        if (browserTimeZone) setCoordinateTimeZone(browserTimeZone);
+        setPrayerTimeSource("coordinates");
+        setLocating(false);
+      },
+      (error) => {
+        const messages: Record<number, string> = {
+          1: "Location permission was denied. Allow location access or enter coordinates manually.",
+          2: "Your location is currently unavailable. Try again or enter coordinates manually.",
+          3: "Location lookup timed out. Try again or enter coordinates manually.",
+        };
+        setProviderError(messages[error.code] ?? "Could not obtain your location.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 },
+    );
+  }
+
+  function loadFixture(id: string) {
+    const fixture = demoPrayerTimes[id];
+    if (!fixture) return;
+    const maghrib = Temporal.Instant.from(fixture.maghrib).toZonedDateTimeISO(fixture.timeZone);
+    const fajr = Temporal.Instant.from(fixture.fajr).toZonedDateTimeISO(fixture.timeZone);
+    setServiceDate(maghrib.toPlainDate().toString());
+    setManualMaghrib(maghrib.toPlainTime().toString({ smallestUnit: "minute" }));
+    setManualFajr(fajr.toPlainTime().toString({ smallestUnit: "minute" }));
+    setManualTimeZone(fixture.timeZone);
+    setPrayerTimeSource("manual");
+    setSubmitted(null);
+    setProviderInfo(null);
+    setProviderError("");
+  }
+
   const result = calculation.result;
+  const engineResult = calculation.engineResult;
   const displayTimeZone = submitted?.timeZone ?? "UTC";
 
   return (
@@ -486,7 +613,11 @@ export default function Home() {
           <p className="mb-7 inline-block border border-[#d0ae67]/30 bg-[#d0ae67]/5 px-4 py-2 text-sm font-semibold text-[#d0ae67]">
             {prayerTimeSource === "london-unified"
               ? "Published times · London Unified"
-              : "Live prayer times · AlAdhan"}
+              : prayerTimeSource === "aladhan"
+                ? "Live prayer times · AlAdhan"
+                : prayerTimeSource === "coordinates"
+                  ? "Live prayer times · Precise coordinates"
+                  : "Trusted timetable · Manual"}
           </p>
 
           <form
@@ -534,7 +665,9 @@ export default function Home() {
               <select
                 value={prayerTimeSource}
                 onChange={(event) =>
-                  setPrayerTimeSource(event.target.value as "london-unified" | "aladhan")
+                  setPrayerTimeSource(
+                    event.target.value as "london-unified" | "aladhan" | "coordinates" | "manual",
+                  )
                 }
                 className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
               >
@@ -542,7 +675,139 @@ export default function Home() {
                   <option value="london-unified">London Unified Prayer Timetable</option>
                 )}
                 <option value="aladhan">AlAdhan astronomical calculation</option>
+                <option value="coordinates">Precise coordinates</option>
+                <option value="manual">Trusted timetable / manual times</option>
               </select>
+            </label>
+            {prayerTimeSource === "coordinates" && (
+              <>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  Latitude
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="-90"
+                    max="90"
+                    value={latitude}
+                    onChange={(event) => {
+                      setLatitude(event.target.value);
+                      setLocationAccuracy(null);
+                    }}
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                    required
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  Longitude
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="any"
+                    min="-180"
+                    max="180"
+                    value={longitude}
+                    onChange={(event) => {
+                      setLongitude(event.target.value);
+                      setLocationAccuracy(null);
+                    }}
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                    required
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  IANA timezone
+                  <input
+                    value={coordinateTimeZone}
+                    onChange={(event) => setCoordinateTimeZone(event.target.value)}
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                    required
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={usePreciseLocation}
+                  disabled={locating}
+                  className="w-full border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67] disabled:opacity-60 lg:w-auto"
+                >
+                  {locating ? "Finding precise location…" : "Use my precise location"}
+                </button>
+                <p
+                  className="text-xs text-[#8ea29d] md:col-span-2 lg:col-span-4"
+                  aria-live="polite"
+                >
+                  {locationAccuracy === null
+                    ? "Location permission is optional; decimal coordinates can always be entered manually."
+                    : `Location acquired with approximately ${Math.round(locationAccuracy)} m accuracy.`}
+                </p>
+              </>
+            )}
+            {prayerTimeSource === "manual" && (
+              <>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  Demonstration fixture
+                  <select
+                    defaultValue=""
+                    onChange={(event) => loadFixture(event.target.value)}
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                  >
+                    <option value="" disabled>
+                      Choose demonstration times
+                    </option>
+                    {Object.entries(demoPrayerTimes).map(([id, fixture]) => (
+                      <option key={id} value={id}>
+                        {fixture.location}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="text-xs text-[#8ea29d]">
+                    Demonstration only—not a live timetable.
+                  </span>
+                </label>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  IANA timezone
+                  <input
+                    value={manualTimeZone}
+                    onChange={(event) => setManualTimeZone(event.target.value)}
+                    placeholder="Europe/London"
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                    required
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  Maghrib
+                  <input
+                    type="time"
+                    step="1"
+                    value={manualMaghrib}
+                    onChange={(event) => setManualMaghrib(event.target.value)}
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                    required
+                  />
+                </label>
+                <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                  Following Fajr <span className="text-[#8ea29d]">(+1 day)</span>
+                  <input
+                    type="time"
+                    step="1"
+                    value={manualFajr}
+                    onChange={(event) => setManualFajr(event.target.value)}
+                    className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                    required
+                  />
+                </label>
+              </>
+            )}
+            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+              Fajr preparation buffer
+              <input
+                type="number"
+                min="0"
+                value={fajrBufferMinutes}
+                onChange={(event) => setFajrBufferMinutes(Number(event.target.value))}
+                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+              />
+              <span className="text-xs text-[#8ea29d]">Minutes before Fajr</span>
             </label>
             {prayerTimeSource === "aladhan" && (
               <>
@@ -739,7 +1004,11 @@ export default function Home() {
           <p className="mt-4 text-xs leading-5 text-[#8ea29d]">
             {prayerTimeSource === "london-unified"
               ? "Uses the published 2026 London Unified timetable for London within the M25. Standard jurisprudence uses Asr mithl 1. The night is calculated from published Maghrib to the following day’s published Fajr."
-              : "AlAdhan calculates today’s Maghrib and following Fajr astronomically. Choose the method used by your local authority; it is not interchangeable with a mosque-published timetable."}
+              : prayerTimeSource === "aladhan"
+                ? "AlAdhan calculates today’s Maghrib and following Fajr astronomically. Choose the method used by your local authority; it is not interchangeable with a mosque-published timetable."
+                : prayerTimeSource === "coordinates"
+                  ? "The server-side provider sources Maghrib and following Fajr for the supplied coordinates. Verify its calculation method against your local authority."
+                  : "Enter Maghrib and the following day’s Fajr exactly as published by a trusted timetable. The engine performs arithmetic only and does not independently choose prayer times."}
           </p>
           {providerInfo && (
             <div className="mt-5 border border-[#d0ae67]/30 bg-[#d0ae67]/5 p-4 text-sm">
@@ -958,6 +1227,7 @@ export default function Home() {
                 <p className="mt-5 text-sm text-[#8ea29d]">Reference: Ṣaḥīḥ al-Bukhārī 1146</p>
               </article>
             </section>
+            {engineResult && submitted && <ScheduleTools result={engineResult} input={submitted} />}
           </>
         )}
 
