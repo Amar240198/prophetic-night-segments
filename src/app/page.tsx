@@ -1,5 +1,6 @@
 "use client";
 
+import { calculateNightSegments as calculateSharedNightSegments } from "@prophetic-night/night-engine";
 import { useMemo, useState } from "react";
 
 type Activity = "Initial sleep" | "Prayer" | "Final sleep";
@@ -38,30 +39,198 @@ type LivePrayerTimes = {
 
 const locations = [
   { id: "custom", country: "", city: "", countryCode: "", latitude: 0, longitude: 0 },
-  { id: "gb-london", country: "United Kingdom", city: "London", countryCode: "GB", latitude: 51.5074, longitude: -0.1278 },
-  { id: "gb-birmingham", country: "United Kingdom", city: "Birmingham", countryCode: "GB", latitude: 52.4862, longitude: -1.8904 },
-  { id: "gb-manchester", country: "United Kingdom", city: "Manchester", countryCode: "GB", latitude: 53.4808, longitude: -2.2426 },
-  { id: "gb-glasgow", country: "United Kingdom", city: "Glasgow", countryCode: "GB", latitude: 55.8642, longitude: -4.2518 },
-  { id: "sa-makkah", country: "Saudi Arabia", city: "Makkah", countryCode: "SA", latitude: 21.3891, longitude: 39.8579 },
-  { id: "sa-madinah", country: "Saudi Arabia", city: "Madinah", countryCode: "SA", latitude: 24.5247, longitude: 39.5692 },
-  { id: "sa-riyadh", country: "Saudi Arabia", city: "Riyadh", countryCode: "SA", latitude: 24.7136, longitude: 46.6753 },
-  { id: "ae-dubai", country: "United Arab Emirates", city: "Dubai", countryCode: "AE", latitude: 25.2048, longitude: 55.2708 },
-  { id: "qa-doha", country: "Qatar", city: "Doha", countryCode: "QA", latitude: 25.2854, longitude: 51.531 },
-  { id: "eg-cairo", country: "Egypt", city: "Cairo", countryCode: "EG", latitude: 30.0444, longitude: 31.2357 },
-  { id: "tr-istanbul", country: "Türkiye", city: "Istanbul", countryCode: "TR", latitude: 41.0082, longitude: 28.9784 },
-  { id: "id-jakarta", country: "Indonesia", city: "Jakarta", countryCode: "ID", latitude: -6.2088, longitude: 106.8456 },
-  { id: "my-kuala-lumpur", country: "Malaysia", city: "Kuala Lumpur", countryCode: "MY", latitude: 3.139, longitude: 101.6869 },
-  { id: "pk-karachi", country: "Pakistan", city: "Karachi", countryCode: "PK", latitude: 24.8607, longitude: 67.0011 },
-  { id: "pk-lahore", country: "Pakistan", city: "Lahore", countryCode: "PK", latitude: 31.5204, longitude: 74.3587 },
-  { id: "in-delhi", country: "India", city: "Delhi", countryCode: "IN", latitude: 28.6139, longitude: 77.209 },
-  { id: "bd-dhaka", country: "Bangladesh", city: "Dhaka", countryCode: "BD", latitude: 23.8103, longitude: 90.4125 },
-  { id: "np-kathmandu", country: "Nepal", city: "Kathmandu", countryCode: "NP", latitude: 27.7172, longitude: 85.324 },
-  { id: "za-cape-town", country: "South Africa", city: "Cape Town", countryCode: "ZA", latitude: -33.9249, longitude: 18.4241 },
-  { id: "no-oslo", country: "Norway", city: "Oslo", countryCode: "NO", latitude: 59.9139, longitude: 10.7522 },
-  { id: "au-sydney", country: "Australia", city: "Sydney", countryCode: "AU", latitude: -33.8688, longitude: 151.2093 },
-  { id: "au-adelaide", country: "Australia", city: "Adelaide", countryCode: "AU", latitude: -34.9285, longitude: 138.6007 },
-  { id: "us-new-york", country: "United States", city: "New York", countryCode: "US", latitude: 40.7128, longitude: -74.006 },
-  { id: "ca-toronto", country: "Canada", city: "Toronto", countryCode: "CA", latitude: 43.6532, longitude: -79.3832 },
+  {
+    id: "gb-london",
+    country: "United Kingdom",
+    city: "London",
+    countryCode: "GB",
+    latitude: 51.5074,
+    longitude: -0.1278,
+  },
+  {
+    id: "gb-birmingham",
+    country: "United Kingdom",
+    city: "Birmingham",
+    countryCode: "GB",
+    latitude: 52.4862,
+    longitude: -1.8904,
+  },
+  {
+    id: "gb-manchester",
+    country: "United Kingdom",
+    city: "Manchester",
+    countryCode: "GB",
+    latitude: 53.4808,
+    longitude: -2.2426,
+  },
+  {
+    id: "gb-glasgow",
+    country: "United Kingdom",
+    city: "Glasgow",
+    countryCode: "GB",
+    latitude: 55.8642,
+    longitude: -4.2518,
+  },
+  {
+    id: "sa-makkah",
+    country: "Saudi Arabia",
+    city: "Makkah",
+    countryCode: "SA",
+    latitude: 21.3891,
+    longitude: 39.8579,
+  },
+  {
+    id: "sa-madinah",
+    country: "Saudi Arabia",
+    city: "Madinah",
+    countryCode: "SA",
+    latitude: 24.5247,
+    longitude: 39.5692,
+  },
+  {
+    id: "sa-riyadh",
+    country: "Saudi Arabia",
+    city: "Riyadh",
+    countryCode: "SA",
+    latitude: 24.7136,
+    longitude: 46.6753,
+  },
+  {
+    id: "ae-dubai",
+    country: "United Arab Emirates",
+    city: "Dubai",
+    countryCode: "AE",
+    latitude: 25.2048,
+    longitude: 55.2708,
+  },
+  {
+    id: "qa-doha",
+    country: "Qatar",
+    city: "Doha",
+    countryCode: "QA",
+    latitude: 25.2854,
+    longitude: 51.531,
+  },
+  {
+    id: "eg-cairo",
+    country: "Egypt",
+    city: "Cairo",
+    countryCode: "EG",
+    latitude: 30.0444,
+    longitude: 31.2357,
+  },
+  {
+    id: "tr-istanbul",
+    country: "Türkiye",
+    city: "Istanbul",
+    countryCode: "TR",
+    latitude: 41.0082,
+    longitude: 28.9784,
+  },
+  {
+    id: "id-jakarta",
+    country: "Indonesia",
+    city: "Jakarta",
+    countryCode: "ID",
+    latitude: -6.2088,
+    longitude: 106.8456,
+  },
+  {
+    id: "my-kuala-lumpur",
+    country: "Malaysia",
+    city: "Kuala Lumpur",
+    countryCode: "MY",
+    latitude: 3.139,
+    longitude: 101.6869,
+  },
+  {
+    id: "pk-karachi",
+    country: "Pakistan",
+    city: "Karachi",
+    countryCode: "PK",
+    latitude: 24.8607,
+    longitude: 67.0011,
+  },
+  {
+    id: "pk-lahore",
+    country: "Pakistan",
+    city: "Lahore",
+    countryCode: "PK",
+    latitude: 31.5204,
+    longitude: 74.3587,
+  },
+  {
+    id: "in-delhi",
+    country: "India",
+    city: "Delhi",
+    countryCode: "IN",
+    latitude: 28.6139,
+    longitude: 77.209,
+  },
+  {
+    id: "bd-dhaka",
+    country: "Bangladesh",
+    city: "Dhaka",
+    countryCode: "BD",
+    latitude: 23.8103,
+    longitude: 90.4125,
+  },
+  {
+    id: "np-kathmandu",
+    country: "Nepal",
+    city: "Kathmandu",
+    countryCode: "NP",
+    latitude: 27.7172,
+    longitude: 85.324,
+  },
+  {
+    id: "za-cape-town",
+    country: "South Africa",
+    city: "Cape Town",
+    countryCode: "ZA",
+    latitude: -33.9249,
+    longitude: 18.4241,
+  },
+  {
+    id: "no-oslo",
+    country: "Norway",
+    city: "Oslo",
+    countryCode: "NO",
+    latitude: 59.9139,
+    longitude: 10.7522,
+  },
+  {
+    id: "au-sydney",
+    country: "Australia",
+    city: "Sydney",
+    countryCode: "AU",
+    latitude: -33.8688,
+    longitude: 151.2093,
+  },
+  {
+    id: "au-adelaide",
+    country: "Australia",
+    city: "Adelaide",
+    countryCode: "AU",
+    latitude: -34.9285,
+    longitude: 138.6007,
+  },
+  {
+    id: "us-new-york",
+    country: "United States",
+    city: "New York",
+    countryCode: "US",
+    latitude: 40.7128,
+    longitude: -74.006,
+  },
+  {
+    id: "ca-toronto",
+    country: "Canada",
+    city: "Toronto",
+    countryCode: "CA",
+    latitude: 43.6532,
+    longitude: -79.3832,
+  },
 ] as const;
 
 const calculationMethods = [
@@ -91,7 +260,10 @@ const calculationMethods = [
   { id: 99, label: "Custom method" },
 ] as const;
 
-const countryCodes = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW".split(" ");
+const countryCodes =
+  "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BV BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HM HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TF TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG UM US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW".split(
+    " ",
+  );
 const regionNames = new Intl.DisplayNames(["en"], { type: "region" });
 const countries = countryCodes
   .map((code) => ({ code, name: regionNames.of(code) ?? code }))
@@ -122,57 +294,31 @@ const thirdByPart: Segment["third"][] = [
  * It never repeatedly adds a rounded sixth. B6 is always the supplied Fajr.
  */
 function calculateNightSegments(maghrib: string, fajr: string): Calculation {
-  const start = Date.parse(maghrib);
-  const end = Date.parse(fajr);
-
-  if (!Number.isFinite(start)) {
-    throw new Error("Maghrib must be a valid ISO 8601 timestamp.");
-  }
-  if (!Number.isFinite(end)) {
-    throw new Error("Fajr must be a valid ISO 8601 timestamp.");
-  }
-  if (end <= start) {
-    throw new Error("Fajr must occur after Maghrib as an absolute instant.");
-  }
-
-  const durationMilliseconds = end - start;
-  if (durationMilliseconds > 18 * 60 * 60 * 1000) {
-    throw new Error("The night cannot exceed 18 hours in this prototype.");
-  }
-
-  const boundaryMilliseconds = Array.from({ length: 7 }, (_, index) =>
-    index === 6
-      ? end
-      : start + Math.floor((durationMilliseconds * index) / 6),
-  );
-  const boundaries = boundaryMilliseconds.map((value) =>
-    new Date(value).toISOString(),
-  );
-
-  const segments = Array.from({ length: 6 }, (_, index): Segment => {
-    const segmentStart = boundaryMilliseconds[index]!;
-    const segmentEnd = boundaryMilliseconds[index + 1]!;
-
-    return {
-      number: index + 1,
-      start: new Date(segmentStart).toISOString(),
-      end: new Date(segmentEnd).toISOString(),
-      durationMilliseconds: segmentEnd - segmentStart,
-      third: thirdByPart[index]!,
-      activity: activityByPart[index]!,
-      isWithinLastThird: index >= 4,
-    };
+  const result = calculateSharedNightSegments({
+    maghrib,
+    fajr,
+    timeZone: "UTC",
   });
+  const boundaries = result.boundaries.map((boundary) => boundary.instant);
+  const segments = result.segments.map((segment): Segment => ({
+    number: segment.number,
+    start: segment.start,
+    end: segment.end,
+    durationMilliseconds: segment.durationMilliseconds,
+    third: thirdByPart[segment.number - 1]!,
+    activity: activityByPart[segment.number - 1]!,
+    isWithinLastThird: segment.isWithinLastThird,
+  }));
 
   return {
-    start: boundaries[0]!,
-    end: boundaries[6]!,
-    durationMilliseconds,
+    start: result.night.start,
+    end: result.night.end,
+    durationMilliseconds: result.night.durationMilliseconds,
     boundaries,
     segments,
-    midpoint: boundaries[3]!,
-    lastThirdStart: boundaries[4]!,
-    finalSixthStart: boundaries[5]!,
+    midpoint: result.midpoint,
+    lastThirdStart: result.lastThird.start,
+    finalSixthStart: result.dawudPattern.finalSleep.start,
   };
 }
 
@@ -228,9 +374,9 @@ export default function Home() {
   const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState(3);
   const [school, setSchool] = useState(0);
-  const [prayerTimeSource, setPrayerTimeSource] = useState<
-    "london-unified" | "aladhan"
-  >("london-unified");
+  const [prayerTimeSource, setPrayerTimeSource] = useState<"london-unified" | "aladhan">(
+    "london-unified",
+  );
   const [latitudeAdjustmentMethod, setLatitudeAdjustmentMethod] = useState(3);
   const [midnightMode, setMidnightMode] = useState(0);
   const [shafaq, setShafaq] = useState("general");
@@ -238,9 +384,7 @@ export default function Home() {
   const [customSettings, setCustomSettings] = useState(["18", "", "17"]);
   const [loadingLive, setLoadingLive] = useState(false);
   const [providerError, setProviderError] = useState("");
-  const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(
-    null,
-  );
+  const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(null);
   const [submitted, setSubmitted] = useState<{
     maghrib: string;
     fajr: string;
@@ -264,9 +408,7 @@ export default function Home() {
     }
   }, [submitted]);
 
-  async function loadLivePrayerTimes(
-    event: React.FormEvent<HTMLFormElement>,
-  ) {
+  async function loadLivePrayerTimes(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoadingLive(true);
     setProviderError("");
@@ -294,9 +436,7 @@ export default function Home() {
       const response = await fetch(`/api/prayer-times?${parameters}`);
       const body = await response.json();
       if (!response.ok) {
-        throw new Error(
-          body.error?.message ?? "Live prayer times could not be loaded.",
-        );
+        throw new Error(body.error?.message ?? "Live prayer times could not be loaded.");
       }
 
       const prayerTimes = body as LivePrayerTimes;
@@ -309,9 +449,7 @@ export default function Home() {
       });
     } catch (error) {
       setProviderError(
-        error instanceof Error
-          ? error.message
-          : "Live prayer times could not be loaded.",
+        error instanceof Error ? error.message : "Live prayer times could not be loaded.",
       );
     } finally {
       setLoadingLive(false);
@@ -329,11 +467,11 @@ export default function Home() {
             MAGHRIB → FOLLOWING FAJR
           </p>
           <h1 className="mx-auto max-w-full text-center font-serif text-4xl leading-tight tracking-tight sm:max-w-4xl sm:text-7xl sm:leading-[0.95]">
-            Sixth of the Night
+            Prophetic Night Segments
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#9baca7] sm:mt-6 sm:text-lg sm:leading-8">
-            Six mathematically exact portions, three conventional thirds, and a
-            careful visualisation of the Dāwūd night pattern.
+            Six mathematically exact portions, three conventional thirds, and a careful
+            visualisation of the Dāwūd night pattern.
           </p>
         </div>
       </header>
@@ -341,9 +479,7 @@ export default function Home() {
       <div className="mx-auto min-w-0 max-w-7xl space-y-12 px-4 py-8 sm:space-y-16 sm:px-8 sm:py-12">
         <section className="min-w-0 border border-white/10 bg-[#0c2229] p-4 shadow-2xl sm:p-10">
           <div className="mb-8">
-            <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">
-              01 / CALCULATE
-            </p>
+            <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">01 / CALCULATE</p>
             <h2 className="mt-2 font-serif text-3xl">Set the night interval</h2>
           </div>
 
@@ -398,16 +534,12 @@ export default function Home() {
               <select
                 value={prayerTimeSource}
                 onChange={(event) =>
-                  setPrayerTimeSource(
-                    event.target.value as "london-unified" | "aladhan",
-                  )
+                  setPrayerTimeSource(event.target.value as "london-unified" | "aladhan")
                 }
                 className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
               >
                 {locationId === "gb-london" && (
-                  <option value="london-unified">
-                    London Unified Prayer Timetable
-                  </option>
+                  <option value="london-unified">London Unified Prayer Timetable</option>
                 )}
                 <option value="aladhan">AlAdhan astronomical calculation</option>
               </select>
@@ -459,20 +591,20 @@ export default function Home() {
               </>
             )}
             {prayerTimeSource === "aladhan" && (
-            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Calculation method
-              <select
-                value={method}
-                onChange={(event) => setMethod(Number(event.target.value))}
-                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
-              >
-                {calculationMethods.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </label>
+              <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                Calculation method
+                <select
+                  value={method}
+                  onChange={(event) => setMethod(Number(event.target.value))}
+                  className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                >
+                  {calculationMethods.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
             {prayerTimeSource === "aladhan" && (
               <details className="md:col-span-2 lg:col-span-4 border border-white/10 bg-[#06151a] p-4">
@@ -518,34 +650,50 @@ export default function Home() {
                 </div>
                 {method === 99 && (
                   <fieldset className="mt-5">
-                    <legend className="text-sm font-semibold text-white">Custom method settings</legend>
+                    <legend className="text-sm font-semibold text-white">
+                      Custom method settings
+                    </legend>
                     <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                      {["Fajr angle", "Maghrib angle / minutes", "Isha angle / minutes"].map((label, index) => (
-                        <label key={label} className="grid gap-2 text-xs text-[#c8d4d0]">
-                          {label}
-                          <input
-                            type="number"
-                            min={0}
-                            max={30}
-                            step="0.1"
-                            value={customSettings[index]}
-                            onChange={(event) => {
-                              const next = [...customSettings];
-                              next[index] = event.target.value;
-                              setCustomSettings(next);
-                            }}
-                            className="border border-white/20 bg-[#0c2229] px-3 py-2"
-                          />
-                        </label>
-                      ))}
+                      {["Fajr angle", "Maghrib angle / minutes", "Isha angle / minutes"].map(
+                        (label, index) => (
+                          <label key={label} className="grid gap-2 text-xs text-[#c8d4d0]">
+                            {label}
+                            <input
+                              type="number"
+                              min={0}
+                              max={30}
+                              step="0.1"
+                              value={customSettings[index]}
+                              onChange={(event) => {
+                                const next = [...customSettings];
+                                next[index] = event.target.value;
+                                setCustomSettings(next);
+                              }}
+                              className="border border-white/20 bg-[#0c2229] px-3 py-2"
+                            />
+                          </label>
+                        ),
+                      )}
                     </div>
                   </fieldset>
                 )}
                 <fieldset className="mt-5">
                   <legend className="text-sm font-semibold text-white">Minute tuning</legend>
-                  <p className="mt-1 text-xs text-[#8ea29d]">Use only to match a verified local authority timetable.</p>
+                  <p className="mt-1 text-xs text-[#8ea29d]">
+                    Use only to match a verified local authority timetable.
+                  </p>
                   <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-                    {["Imsak", "Fajr", "Sunrise", "Dhuhr", "Asr", "Maghrib", "Sunset", "Isha", "Midnight"].map((label, index) => (
+                    {[
+                      "Imsak",
+                      "Fajr",
+                      "Sunrise",
+                      "Dhuhr",
+                      "Asr",
+                      "Maghrib",
+                      "Sunset",
+                      "Isha",
+                      "Midnight",
+                    ].map((label, index) => (
                       <label key={label} className="grid gap-2 text-xs text-[#c8d4d0]">
                         {label}
                         <input
@@ -568,17 +716,17 @@ export default function Home() {
               </details>
             )}
             {prayerTimeSource === "aladhan" && (
-            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Asr juristic method
-              <select
-                value={school}
-                onChange={(event) => setSchool(Number(event.target.value))}
-                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
-              >
-                <option value={0}>Standard — Shafi, Maliki, Hanbali</option>
-                <option value={1}>Hanafi</option>
-              </select>
-            </label>
+              <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+                Asr juristic method
+                <select
+                  value={school}
+                  onChange={(event) => setSchool(Number(event.target.value))}
+                  className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+                >
+                  <option value={0}>Standard — Shafi, Maliki, Hanbali</option>
+                  <option value={1}>Hanafi</option>
+                </select>
+              </label>
             )}
             <button
               type="submit"
@@ -595,19 +743,15 @@ export default function Home() {
           </p>
           {providerInfo && (
             <div className="mt-5 border border-[#d0ae67]/30 bg-[#d0ae67]/5 p-4 text-sm">
-              <p className="font-semibold text-[#d0ae67]">
-                {providerInfo.location}
-              </p>
+              <p className="font-semibold text-[#d0ae67]">{providerInfo.location}</p>
               <p className="mt-2 text-base font-semibold text-white">
-                Night of{" "}
-                {formatCalendarDate(
-                  providerInfo.maghrib,
-                  providerInfo.timeZone,
-                )}
+                Night of {formatCalendarDate(providerInfo.maghrib, providerInfo.timeZone)}
               </p>
               <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                 <div className="border border-white/10 bg-[#06151a] p-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-[#8ea29d]">Night begins · Maghrib</p>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[#8ea29d]">
+                    Night begins · Maghrib
+                  </p>
                   <p className="mt-1 text-xl font-semibold text-[#d0ae67]">
                     {formatPrayerTime(providerInfo.maghrib, providerInfo.timeZone)}
                   </p>
@@ -615,9 +759,13 @@ export default function Home() {
                     {formatCalendarDate(providerInfo.maghrib, providerInfo.timeZone)}
                   </p>
                 </div>
-                <span aria-hidden="true" className="hidden text-[#8ea29d] sm:block">→</span>
+                <span aria-hidden="true" className="hidden text-[#8ea29d] sm:block">
+                  →
+                </span>
                 <div className="border border-white/10 bg-[#06151a] p-3">
-                  <p className="text-xs uppercase tracking-[0.16em] text-[#8ea29d]">Night ends · following Fajr</p>
+                  <p className="text-xs uppercase tracking-[0.16em] text-[#8ea29d]">
+                    Night ends · following Fajr
+                  </p>
                   <p className="mt-1 text-xl font-semibold text-[#d0ae67]">
                     {formatPrayerTime(providerInfo.fajr, providerInfo.timeZone)}
                   </p>
@@ -650,13 +798,8 @@ export default function Home() {
         {result && (
           <>
             <section aria-labelledby="night-summary">
-              <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">
-                02 / NIGHT MAP
-              </p>
-              <h2
-                id="night-summary"
-                className="mt-2 font-serif text-3xl sm:text-4xl"
-              >
+              <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">02 / NIGHT MAP</p>
+              <h2 id="night-summary" className="mt-2 font-serif text-3xl sm:text-4xl">
                 Six-part timeline
               </h2>
               <p className="mt-3 text-[#9baca7]">
@@ -677,15 +820,9 @@ export default function Home() {
                         : "border-white/10 bg-[#0c2229]"
                     }`}
                   >
-                    <span className="font-serif text-3xl text-[#d0ae67]">
-                      0{segment.number}
-                    </span>
-                    <h3 className="mt-6 text-lg font-semibold">
-                      Part {segment.number}
-                    </h3>
-                    <p className="mt-1 text-sm text-[#a8b8b3]">
-                      {segment.activity}
-                    </p>
+                    <span className="font-serif text-3xl text-[#d0ae67]">0{segment.number}</span>
+                    <h3 className="mt-6 text-lg font-semibold">Part {segment.number}</h3>
+                    <p className="mt-1 text-sm text-[#a8b8b3]">{segment.activity}</p>
 
                     {segment.isWithinLastThird && (
                       <strong className="mt-3 text-[0.65rem] tracking-[0.16em] text-[#d0ae67]">
@@ -694,15 +831,12 @@ export default function Home() {
                     )}
 
                     <div className="mt-auto pt-8 text-sm">
-                      <time className="block">
-                        {formatTime(segment.start, displayTimeZone)}
-                      </time>
+                      <time className="block">{formatTime(segment.start, displayTimeZone)}</time>
                       <time className="block text-[#9baca7]">
                         → {formatTime(segment.end, displayTimeZone)}
                       </time>
                       <p className="mt-3 text-xs text-[#839792]">
-                        {segment.third} ·{" "}
-                        {formatDuration(segment.durationMilliseconds)}
+                        {segment.third} · {formatDuration(segment.durationMilliseconds)}
                       </p>
                     </div>
                   </article>
@@ -710,16 +844,13 @@ export default function Home() {
               </div>
 
               <p className="mt-4 text-xs text-[#839792]">
-                Exact millisecond values are used internally. Displayed clock
-                values are formatted separately.
+                Exact millisecond values are used internally. Displayed clock values are formatted
+                separately.
               </p>
             </section>
 
             <section aria-labelledby="thirds-heading">
-              <h2
-                id="thirds-heading"
-                className="font-serif text-3xl sm:text-4xl"
-              >
+              <h2 id="thirds-heading" className="font-serif text-3xl sm:text-4xl">
                 Three conventional thirds
               </h2>
               <div className="mt-7 grid min-w-0 gap-3 md:grid-cols-3">
@@ -775,9 +906,7 @@ export default function Home() {
                 <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
                   DĀWŪD NIGHT PATTERN
                 </p>
-                <h2 className="mt-3 font-serif text-3xl">
-                  Sleep · Prayer · Sleep
-                </h2>
+                <h2 className="mt-3 font-serif text-3xl">Sleep · Prayer · Sleep</h2>
                 <dl className="mt-7 divide-y divide-white/10">
                   {[
                     {
@@ -796,10 +925,7 @@ export default function Home() {
                       end: result.end,
                     },
                   ].map((row) => (
-                    <div
-                      key={row.label}
-                      className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]"
-                    >
+                    <div key={row.label} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]">
                       <dt>{row.label}</dt>
                       <dd className="text-sm text-[#d0ae67]">
                         {formatTime(row.start, displayTimeZone)} →{" "}
@@ -809,9 +935,8 @@ export default function Home() {
                   ))}
                 </dl>
                 <p className="mt-5 text-sm leading-6 text-[#8ea29d]">
-                  A scheduling visualisation based on the night pattern
-                  attributed to Prophet Dāwūd in Ṣaḥīḥ al-Bukhārī 1131. It is
-                  not compulsory or a religious ruling.
+                  A scheduling visualisation based on the night pattern attributed to Prophet Dāwūd
+                  in Ṣaḥīḥ al-Bukhārī 1131. It is not compulsory or a religious ruling.
                 </p>
               </article>
 
@@ -819,34 +944,26 @@ export default function Home() {
                 <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
                   IMPORTANT DISTINCTION
                 </p>
-                <h2 className="mt-3 font-serif text-3xl">
-                  Two overlapping layers
-                </h2>
+                <h2 className="mt-3 font-serif text-3xl">Two overlapping layers</h2>
                 <p className="mt-6 leading-7 text-[#b9c6c2]">
-                  The Dāwūd prayer period covers Parts 4–5. The mathematical
-                  last third covers Parts 5–6. Part 5 is where the two layers
-                  overlap.
+                  The Dāwūd prayer period covers Parts 4–5. The mathematical last third covers Parts
+                  5–6. Part 5 is where the two layers overlap.
                 </p>
                 <p className="mt-4 leading-7 text-[#9baca7]">
-                  An authentic narration describes the Prophet Muhammad ﷺ
-                  sleeping, rising during the latter part of the night to pray,
-                  returning to bed, and rising again for Fajr. The exact
-                  six-part schedule shown here corresponds directly to the
-                  separately narrated Dāwūd pattern.
+                  An authentic narration describes the Prophet Muhammad ﷺ sleeping, rising during
+                  the latter part of the night to pray, returning to bed, and rising again for Fajr.
+                  The exact six-part schedule shown here corresponds directly to the separately
+                  narrated Dāwūd pattern.
                 </p>
-                <p className="mt-5 text-sm text-[#8ea29d]">
-                  Reference: Ṣaḥīḥ al-Bukhārī 1146
-                </p>
+                <p className="mt-5 text-sm text-[#8ea29d]">Reference: Ṣaḥīḥ al-Bukhārī 1146</p>
               </article>
             </section>
-
           </>
         )}
 
         <footer className="border-t border-white/10 py-8 text-sm leading-6 text-[#839792]">
-          This informational prototype performs arithmetic on supplied prayer
-          times. It does not calculate prayer times, issue fatāwā, or replace
-          qualified religious guidance.
+          This informational prototype performs arithmetic on supplied prayer times. It does not
+          calculate prayer times, issue fatāwā, or replace qualified religious guidance.
         </footer>
       </div>
     </main>

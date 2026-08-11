@@ -113,9 +113,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function parseResponse(value: unknown): AlAdhanDay {
   if (!isRecord(value) || value.code !== 200 || !isRecord(value.data)) {
-    const status = isRecord(value) && typeof value.status === "string"
-      ? `: ${value.status}`
-      : "";
+    const status = isRecord(value) && typeof value.status === "string" ? `: ${value.status}` : "";
     throw new Error(`AlAdhan returned an unsuccessful response${status}`);
   }
 
@@ -222,12 +220,20 @@ function toApiDate(date: Temporal.PlainDate): string {
 }
 
 function validateOptions(options: FetchAlAdhanPrayerTimesOptions): void {
-  if (!options.city.trim() || options.city.length > 100) throw new Error("City must be between 1 and 100 characters");
-  if (!options.country.trim() || options.country.length > 100) throw new Error("Country must be between 1 and 100 characters");
-  if (options.state !== undefined && options.state.length > 100) throw new Error("State must not exceed 100 characters");
-  if (!(options.calculationMethod in ALADHAN_CALCULATION_METHODS)) throw new Error(`Unsupported AlAdhan calculation method: ${options.calculationMethod}`);
-  if (!(options.school in ALADHAN_SCHOOLS)) throw new Error(`Unsupported AlAdhan school: ${options.school}`);
-  if (options.latitudeAdjustmentMethod !== undefined && ![1, 2, 3].includes(options.latitudeAdjustmentMethod)) {
+  if (!options.city.trim() || options.city.length > 100)
+    throw new Error("City must be between 1 and 100 characters");
+  if (!options.country.trim() || options.country.length > 100)
+    throw new Error("Country must be between 1 and 100 characters");
+  if (options.state !== undefined && options.state.length > 100)
+    throw new Error("State must not exceed 100 characters");
+  if (!(options.calculationMethod in ALADHAN_CALCULATION_METHODS))
+    throw new Error(`Unsupported AlAdhan calculation method: ${options.calculationMethod}`);
+  if (!(options.school in ALADHAN_SCHOOLS))
+    throw new Error(`Unsupported AlAdhan school: ${options.school}`);
+  if (
+    options.latitudeAdjustmentMethod !== undefined &&
+    ![1, 2, 3].includes(options.latitudeAdjustmentMethod)
+  ) {
     throw new Error("Unsupported high-latitude adjustment method");
   }
   if (options.midnightMode !== undefined && ![0, 1].includes(options.midnightMode)) {
@@ -249,14 +255,24 @@ function validateOptions(options: FetchAlAdhanPrayerTimesOptions): void {
     if (!options.methodSettings || options.methodSettings.every((value) => value === null)) {
       throw new Error("Custom method requires at least one method setting");
     }
-    if (options.methodSettings.some((value) => value !== null && (!Number.isFinite(value) || value < 0 || value > 30))) {
+    if (
+      options.methodSettings.some(
+        (value) => value !== null && (!Number.isFinite(value) || value < 0 || value > 30),
+      )
+    ) {
       throw new Error("Custom method settings must be null or a number from 0 to 30");
     }
   }
-  if (options.adjustment !== undefined && (!Number.isInteger(options.adjustment) || options.adjustment < -2 || options.adjustment > 2)) {
+  if (
+    options.adjustment !== undefined &&
+    (!Number.isInteger(options.adjustment) || options.adjustment < -2 || options.adjustment > 2)
+  ) {
     throw new Error("Adjustment must be an integer from -2 to 2");
   }
-  if (options.timeout !== undefined && (!Number.isFinite(options.timeout) || options.timeout <= 0)) {
+  if (
+    options.timeout !== undefined &&
+    (!Number.isFinite(options.timeout) || options.timeout <= 0)
+  ) {
     throw new Error("Timeout must be a positive number of milliseconds");
   }
 }
@@ -278,16 +294,18 @@ async function fetchDay(
   if (options.latitudeAdjustmentMethod !== undefined) {
     url.searchParams.set("latitudeAdjustmentMethod", String(options.latitudeAdjustmentMethod));
   }
-  if (options.midnightMode !== undefined) url.searchParams.set("midnightMode", String(options.midnightMode));
+  if (options.midnightMode !== undefined)
+    url.searchParams.set("midnightMode", String(options.midnightMode));
   if (options.shafaq !== undefined) url.searchParams.set("shafaq", options.shafaq);
   if (options.tune !== undefined) url.searchParams.set("tune", options.tune.join(","));
   if (options.methodSettings !== undefined) {
     url.searchParams.set(
       "methodSettings",
-      options.methodSettings.map((value) => value === null ? "null" : String(value)).join(","),
+      options.methodSettings.map((value) => (value === null ? "null" : String(value))).join(","),
     );
   }
-  if (options.adjustment !== undefined) url.searchParams.set("adjustment", String(options.adjustment));
+  if (options.adjustment !== undefined)
+    url.searchParams.set("adjustment", String(options.adjustment));
 
   const timeout = options.timeout ?? DEFAULT_TIMEOUT_MS;
   for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -301,7 +319,9 @@ async function fetchDay(
       });
       if (!response.ok) {
         if (attempt === 0 && isTransientStatus(response.status)) continue;
-        throw new Error(`AlAdhan request for ${date} failed with HTTP ${response.status} ${response.statusText}`.trim());
+        throw new Error(
+          `AlAdhan request for ${date} failed with HTTP ${response.status} ${response.statusText}`.trim(),
+        );
       }
       let body: unknown;
       try {
@@ -314,8 +334,12 @@ async function fetchDay(
       const aborted = controller.signal.aborted;
       const networkFailure = error instanceof TypeError;
       if (attempt === 0 && (aborted || networkFailure)) continue;
-      if (aborted) throw new Error(`AlAdhan request for ${date} timed out after ${timeout}ms (2 attempts)`);
-      if (networkFailure) throw new Error(`AlAdhan network request for ${date} failed after 2 attempts: ${error.message}`);
+      if (aborted)
+        throw new Error(`AlAdhan request for ${date} timed out after ${timeout}ms (2 attempts)`);
+      if (networkFailure)
+        throw new Error(
+          `AlAdhan network request for ${date} failed after 2 attempts: ${error.message}`,
+        );
       throw error;
     } finally {
       clearTimeout(timer);
@@ -340,30 +364,76 @@ export async function fetchAlAdhanPrayerTimes(
 
   return {
     maghrib: toPrayerTime(day.date.gregorian.date, day.timings.Maghrib, day.meta.timezone),
-    fajr: toPrayerTime(followingDay.date.gregorian.date, followingDay.timings.Fajr, day.meta.timezone),
+    fajr: toPrayerTime(
+      followingDay.date.gregorian.date,
+      followingDay.timings.Fajr,
+      day.meta.timezone,
+    ),
     timezone: day.meta.timezone,
     calculationMethod: ALADHAN_CALCULATION_METHODS[options.calculationMethod],
     school: ALADHAN_SCHOOLS[options.school],
     source: "AlAdhan API",
     dailyPrayerTimes: {
       serviceDate: date.toString(),
-      fajr: parseClockTime(day.timings.Fajr).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Fajr).minute.toString().padStart(2, "0"),
-      sunrise: parseClockTime(day.timings.Sunrise).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Sunrise).minute.toString().padStart(2, "0"),
-      dhuhr: parseClockTime(day.timings.Dhuhr).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Dhuhr).minute.toString().padStart(2, "0"),
-      asr: parseClockTime(day.timings.Asr).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Asr).minute.toString().padStart(2, "0"),
-      maghrib: parseClockTime(day.timings.Maghrib).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Maghrib).minute.toString().padStart(2, "0"),
-      isha: parseClockTime(day.timings.Isha).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Isha).minute.toString().padStart(2, "0"),
-      midnight: parseClockTime(day.timings.Midnight).hour.toString().padStart(2, "0") + ":" + parseClockTime(day.timings.Midnight).minute.toString().padStart(2, "0"),
+      fajr:
+        parseClockTime(day.timings.Fajr).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Fajr).minute.toString().padStart(2, "0"),
+      sunrise:
+        parseClockTime(day.timings.Sunrise).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Sunrise).minute.toString().padStart(2, "0"),
+      dhuhr:
+        parseClockTime(day.timings.Dhuhr).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Dhuhr).minute.toString().padStart(2, "0"),
+      asr:
+        parseClockTime(day.timings.Asr).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Asr).minute.toString().padStart(2, "0"),
+      maghrib:
+        parseClockTime(day.timings.Maghrib).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Maghrib).minute.toString().padStart(2, "0"),
+      isha:
+        parseClockTime(day.timings.Isha).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Isha).minute.toString().padStart(2, "0"),
+      midnight:
+        parseClockTime(day.timings.Midnight).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(day.timings.Midnight).minute.toString().padStart(2, "0"),
     },
     followingDayPrayerTimes: {
       serviceDate: date.add({ days: 1 }).toString(),
-      fajr: parseClockTime(followingDay.timings.Fajr).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Fajr).minute.toString().padStart(2, "0"),
-      sunrise: parseClockTime(followingDay.timings.Sunrise).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Sunrise).minute.toString().padStart(2, "0"),
-      dhuhr: parseClockTime(followingDay.timings.Dhuhr).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Dhuhr).minute.toString().padStart(2, "0"),
-      asr: parseClockTime(followingDay.timings.Asr).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Asr).minute.toString().padStart(2, "0"),
-      maghrib: parseClockTime(followingDay.timings.Maghrib).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Maghrib).minute.toString().padStart(2, "0"),
-      isha: parseClockTime(followingDay.timings.Isha).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Isha).minute.toString().padStart(2, "0"),
-      midnight: parseClockTime(followingDay.timings.Midnight).hour.toString().padStart(2, "0") + ":" + parseClockTime(followingDay.timings.Midnight).minute.toString().padStart(2, "0"),
+      fajr:
+        parseClockTime(followingDay.timings.Fajr).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Fajr).minute.toString().padStart(2, "0"),
+      sunrise:
+        parseClockTime(followingDay.timings.Sunrise).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Sunrise).minute.toString().padStart(2, "0"),
+      dhuhr:
+        parseClockTime(followingDay.timings.Dhuhr).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Dhuhr).minute.toString().padStart(2, "0"),
+      asr:
+        parseClockTime(followingDay.timings.Asr).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Asr).minute.toString().padStart(2, "0"),
+      maghrib:
+        parseClockTime(followingDay.timings.Maghrib).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Maghrib).minute.toString().padStart(2, "0"),
+      isha:
+        parseClockTime(followingDay.timings.Isha).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Isha).minute.toString().padStart(2, "0"),
+      midnight:
+        parseClockTime(followingDay.timings.Midnight).hour.toString().padStart(2, "0") +
+        ":" +
+        parseClockTime(followingDay.timings.Midnight).minute.toString().padStart(2, "0"),
     },
   };
 }

@@ -1,0 +1,5 @@
+<script type="module">
+  const response = await fetch("http://localhost:3001/api/v1/night/example");
+  const result = await response.json();
+  document.body.textContent = JSON.stringify(result, null, 2);
+</script>

@@ -1,0 +1,14 @@
+{
+  "name": "@prophetic-night/prayer-providers",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -b --force --pretty false",
+    "typecheck": "tsc -b --force --pretty false"
+  },
+  "dependencies": {
+    "@js-temporal/polyfill": "^0.5.1"
+  }
+}

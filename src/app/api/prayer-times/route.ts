@@ -21,7 +21,9 @@ export async function GET(request: NextRequest) {
   const adjustment = adjustmentValue === null ? undefined : Number(adjustmentValue);
   const source = request.nextUrl.searchParams.get("source") ?? "aladhan";
   const state = request.nextUrl.searchParams.get("state")?.trim() || undefined;
-  const latitudeAdjustmentMethodValue = request.nextUrl.searchParams.get("latitudeAdjustmentMethod");
+  const latitudeAdjustmentMethodValue = request.nextUrl.searchParams.get(
+    "latitudeAdjustmentMethod",
+  );
   const latitudeAdjustmentMethod =
     latitudeAdjustmentMethodValue === null ? undefined : Number(latitudeAdjustmentMethodValue);
   const midnightModeValue = request.nextUrl.searchParams.get("midnightMode");
@@ -34,9 +36,9 @@ export async function GET(request: NextRequest) {
   const tuneValue = request.nextUrl.searchParams.get("tune");
   const tune = tuneValue?.split(",").map(Number);
   const methodSettingsValue = request.nextUrl.searchParams.get("methodSettings");
-  const methodSettings = methodSettingsValue?.split(",").map((value) =>
-    value === "" || value === "null" ? null : Number(value),
-  );
+  const methodSettings = methodSettingsValue
+    ?.split(",")
+    .map((value) => (value === "" || value === "null" ? null : Number(value)));
 
   if (source === "london-unified") {
     if (city !== "London" || country !== "United Kingdom") {
@@ -117,19 +119,20 @@ export async function GET(request: NextRequest) {
 
   try {
     const result = await fetchAlAdhanPrayerTimes({
-        city,
-        country,
-        state,
-        date,
-        calculationMethod: calculationMethod as AlAdhanCalculationMethod,
-        school: school as AlAdhanSchool,
-        latitudeAdjustmentMethod: latitudeAdjustmentMethod as 1 | 2 | 3 | undefined,
-        midnightMode: midnightMode as 0 | 1 | undefined,
-        shafaq,
-        tune: tune as [number, number, number, number, number, number, number, number, number] | undefined,
-        methodSettings: methodSettings as [number | null, number | null, number | null] | undefined,
-        adjustment,
-      });
+      city,
+      country,
+      state,
+      date,
+      calculationMethod: calculationMethod as AlAdhanCalculationMethod,
+      school: school as AlAdhanSchool,
+      latitudeAdjustmentMethod: latitudeAdjustmentMethod as 1 | 2 | 3 | undefined,
+      midnightMode: midnightMode as 0 | 1 | undefined,
+      shafaq,
+      tune: tune as
+        [number, number, number, number, number, number, number, number, number] | undefined,
+      methodSettings: methodSettings as [number | null, number | null, number | null] | undefined,
+      adjustment,
+    });
     return NextResponse.json({
       maghrib: result.maghrib.iso,
       fajr: result.fajr.iso,

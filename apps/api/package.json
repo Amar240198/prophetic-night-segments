@@ -1,0 +1,23 @@
+{
+  "name": "@prophetic-night/api",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -b --force --pretty false",
+    "start": "node dist/server.js",
+    "typecheck": "tsc -b --force --pretty false"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.0.1",
+    "@fastify/helmet": "^13.0.1",
+    "@fastify/swagger": "^9.5.1",
+    "@fastify/swagger-ui": "^5.2.3",
+    "@prophetic-night/night-engine": "workspace:*",
+    "@prophetic-night/prayer-providers": "workspace:*",
+    "fastify": "^5.4.0"
+  },
+  "devDependencies": {
+    "tsx": "^4.20.3"
+  }
+}

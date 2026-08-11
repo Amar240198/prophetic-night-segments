@@ -55,9 +55,7 @@ export function getLondonUnifiedPrayerTimes(dateValue: string): LondonUnifiedPra
   const followingDate = date.add({ days: 1 });
   const day = londonUnified2026[date.toString().slice(5)];
   const followingDay =
-    followingDate.year === 2026
-      ? londonUnified2026[followingDate.toString().slice(5)]
-      : undefined;
+    followingDate.year === 2026 ? londonUnified2026[followingDate.toString().slice(5)] : undefined;
   if (!day || !followingDay) {
     throw new Error("London Unified does not cover the complete requested night.");
   }

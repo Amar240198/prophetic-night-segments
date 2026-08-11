@@ -4,24 +4,42 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "dev:api": "pnpm --filter @prophetic-night/api dev",
+    "build": "pnpm --filter './packages/**' build && next build",
+    "build:all": "pnpm --filter @prophetic-night/api build && pnpm build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint . --max-warnings 0",
+    "typecheck": "pnpm --filter './packages/**' typecheck && pnpm --filter @prophetic-night/api typecheck && tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest run packages",
+    "test:integration": "vitest run tests/integration tests/fixtures",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "@js-temporal/polyfill": "^0.5.1",
+    "@prophetic-night/night-engine": "workspace:*",
+    "@vercel/analytics": "^2.0.1",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.31.0",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.11",
+    "fast-check": "^4.2.0",
+    "jsdom": "^26.1.0",
+    "prettier": "^3.6.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5.8.3",
+    "typescript-eslint": "^8.38.0",
+    "vitest": "^3.2.4"
   }
 }

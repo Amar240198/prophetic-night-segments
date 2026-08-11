@@ -1,0 +1,10 @@
+{
+  "name": "@prophetic-night/config",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo config-ready",
+    "typecheck": "echo config-ready"
+  }
+}
