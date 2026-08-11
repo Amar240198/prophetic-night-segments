@@ -11,9 +11,6 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  Object.assign(navigator, {
-    clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
-  });
   vi.stubGlobal(
     "fetch",
     vi.fn().mockResolvedValue({
@@ -54,9 +51,8 @@ describe("Prophetic Night Segments interface", () => {
     expect(screen.getAllByText("LAST THIRD")).toHaveLength(2);
     expect(screen.getAllByText(/beginning of Part 5/).length).toBeGreaterThan(0);
     expect(screen.getByText("Alarm planning")).toBeInTheDocument();
-    expect(screen.getByText("Developer output")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Copy JSON" }));
-    expect(navigator.clipboard.writeText).toHaveBeenCalled();
+    expect(screen.queryByText("Developer output")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Copy JSON" })).not.toBeInTheDocument();
   });
 
   it("calculates from trusted manual timetable values without calling a provider", async () => {

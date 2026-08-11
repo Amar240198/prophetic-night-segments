@@ -60,7 +60,6 @@ function downloadCalendar(result: NightCalculationResult, preferences: AlarmPref
 }
 
 export function ScheduleTools({ result, input }: ScheduleToolsProps) {
-  const [copied, setCopied] = useState("");
   const [preferences, setPreferences] = useState<AlarmPreferences>({
     atPart4: true,
     atLastThird: true,
@@ -68,18 +67,6 @@ export function ScheduleTools({ result, input }: ScheduleToolsProps) {
     fajrPreparationMinutes: 20,
   });
   const plan = useMemo(() => createAlarmPlan(result, preferences), [result, preferences]);
-  const apiOrigin = typeof window === "undefined" ? "https://example.com" : window.location.origin;
-  const examples = {
-    curl: `curl -X POST ${apiOrigin}/api/v1/night/calculate \\\n+  -H 'content-type: application/json' \\\n+  -d '${JSON.stringify(input)}'`,
-    javascript: `const response = await fetch("${apiOrigin}/api/v1/night/calculate", {\n  method: "POST",\n  headers: { "content-type": "application/json" },\n  body: JSON.stringify(${JSON.stringify(input, null, 2)})\n});\nconst night = await response.json();`,
-    typescript: `import { calculateNightSegments } from "@prophetic-night/night-engine";\n\nconst night = calculateNightSegments(${JSON.stringify(input, null, 2)});`,
-  };
-
-  async function copy(label: string, value: string) {
-    await navigator.clipboard.writeText(value);
-    setCopied(label);
-    window.setTimeout(() => setCopied(""), 1_400);
-  }
 
   function updateCustomMinutes(value: string) {
     const next = { ...preferences };
@@ -89,108 +76,67 @@ export function ScheduleTools({ result, input }: ScheduleToolsProps) {
   }
 
   return (
-    <>
-      <section
-        className="border border-white/10 bg-[#0c2229] p-5 sm:p-9"
-        aria-labelledby="alarms-title"
-      >
-        <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">03 / PLAN</p>
-        <h2 id="alarms-title" className="mt-3 font-serif text-3xl">
-          Alarm planning
-        </h2>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          {(
-            [
-              ["atPart4", "Wake at beginning of Part 4"],
-              ["atPart5", "Wake at beginning of Part 5"],
-              ["atLastThird", "Wake at beginning of last third"],
-              ["endPrayerAtPart6", "End prayer at beginning of Part 6"],
-            ] as const
-          ).map(([key, label]) => (
-            <label key={key} className="flex items-center gap-3 border border-white/10 p-3">
-              <input
-                type="checkbox"
-                checked={Boolean(preferences[key])}
-                onChange={(event) =>
-                  setPreferences({ ...preferences, [key]: event.target.checked })
-                }
-              />
-              {label}
-            </label>
-          ))}
-          <label className="grid gap-2 text-sm text-[#c8d4d0]">
-            Custom minutes before Fajr
+    <section
+      className="border border-white/10 bg-[#0c2229] p-5 sm:p-9"
+      aria-labelledby="alarms-title"
+    >
+      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">03 / PLAN</p>
+      <h2 id="alarms-title" className="mt-3 font-serif text-3xl">
+        Alarm planning
+      </h2>
+      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+        {(
+          [
+            ["atPart4", "Wake at beginning of Part 4"],
+            ["atPart5", "Wake at beginning of Part 5"],
+            ["atLastThird", "Wake at beginning of last third"],
+            ["endPrayerAtPart6", "End prayer at beginning of Part 6"],
+          ] as const
+        ).map(([key, label]) => (
+          <label key={key} className="flex items-center gap-3 border border-white/10 p-3">
             <input
-              type="number"
-              min="0"
-              value={preferences.minutesBeforeFajr ?? ""}
-              onChange={(event) => updateCustomMinutes(event.target.value)}
-              className="border border-white/20 bg-[#06151a] px-3 py-2 text-white"
+              type="checkbox"
+              checked={Boolean(preferences[key])}
+              onChange={(event) => setPreferences({ ...preferences, [key]: event.target.checked })}
             />
+            {label}
           </label>
-        </div>
-        <div className="mt-6 divide-y divide-white/10 border-y border-white/10" aria-live="polite">
-          {plan.alarms.map((alarm) => (
-            <p key={alarm.id} className="flex flex-wrap justify-between gap-3 py-3">
-              <span>{alarm.label}</span>
-              <strong className="text-[#d0ae67]">
-                {formatInstant(alarm.instant, { timeZone: input.timeZone, displayFormat: "24h" })}
-              </strong>
-            </p>
-          ))}
-        </div>
-        <button
-          type="button"
-          onClick={() => downloadCalendar(result, preferences)}
-          className="mt-6 border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10"
-        >
-          Download calendar (.ics)
-        </button>
-        <p className="mt-3 text-xs leading-5 text-[#8ea29d]">
-          Calendar reminders depend on your device and calendar app. A browser cannot reliably sound
-          an alarm after it closes.
-        </p>
-      </section>
-
-      <section className="border border-white/10 p-5 sm:p-9" aria-labelledby="developer-title">
-        <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">04 / INTEGRATE</p>
-        <h2 id="developer-title" className="mt-3 font-serif text-3xl">
-          Developer output
-        </h2>
-        <details className="mt-6 border border-white/10 bg-[#06151a] p-4">
-          <summary className="cursor-pointer font-semibold text-[#d0ae67]">
-            Exact engine response
-          </summary>
-          <pre className="mt-4 max-h-96 overflow-auto whitespace-pre-wrap break-all text-xs">
-            {JSON.stringify(result, null, 2)}
-          </pre>
-          <button
-            type="button"
-            onClick={() => copy("json", JSON.stringify(result, null, 2))}
-            className="mt-4 border border-white/20 px-4 py-2"
-          >
-            {copied === "json" ? "Copied" : "Copy JSON"}
-          </button>
-        </details>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {(
-            [
-              ["curl", "Copy cURL request", examples.curl],
-              ["javascript", "Copy JavaScript example", examples.javascript],
-              ["typescript", "Copy TypeScript example", examples.typescript],
-            ] as const
-          ).map(([key, label, value]) => (
-            <button
-              key={key}
-              type="button"
-              onClick={() => copy(key, value)}
-              className="border border-white/20 px-4 py-3 hover:border-[#d0ae67]"
-            >
-              {copied === key ? "Copied" : label}
-            </button>
-          ))}
-        </div>
-      </section>
-    </>
+        ))}
+        <label className="grid gap-2 text-sm text-[#c8d4d0]">
+          Custom minutes before Fajr
+          <input
+            type="number"
+            min="0"
+            value={preferences.minutesBeforeFajr ?? ""}
+            onChange={(event) => updateCustomMinutes(event.target.value)}
+            className="border border-white/20 bg-[#06151a] px-3 py-2 text-white"
+          />
+        </label>
+      </div>
+      <div className="mt-6 divide-y divide-white/10 border-y border-white/10" aria-live="polite">
+        {plan.alarms.map((alarm) => (
+          <p key={alarm.id} className="flex flex-wrap justify-between gap-3 py-3">
+            <span>{alarm.label}</span>
+            <strong className="text-[#d0ae67]">
+              {formatInstant(alarm.instant, {
+                timeZone: input.timeZone,
+                displayFormat: "24h",
+              })}
+            </strong>
+          </p>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={() => downloadCalendar(result, preferences)}
+        className="mt-6 border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10"
+      >
+        Download calendar (.ics)
+      </button>
+      <p className="mt-3 text-xs leading-5 text-[#8ea29d]">
+        Calendar reminders depend on your device and calendar app. A browser cannot reliably sound
+        an alarm after it closes.
+      </p>
+    </section>
   );
 }
