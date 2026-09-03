@@ -1089,13 +1089,6 @@ export default function Home() {
 
         {result && (
           <>
-            {engineResult && submitted && (
-              <ScheduleTools
-                result={engineResult}
-                input={submitted}
-                firstAdhanMinutes={firstAdhanMinutes}
-              />
-            )}
             <section aria-labelledby="night-summary">
               <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">02 / NIGHT MAP</p>
               <h2 id="night-summary" className="mt-2 font-serif text-3xl sm:text-4xl">
@@ -1317,6 +1310,13 @@ export default function Home() {
                   without establishing one exact six-part schedule.
                 </p>
               </section>
+            )}
+            {engineResult && submitted && (
+              <ScheduleTools
+                result={engineResult}
+                input={submitted}
+                firstAdhanMinutes={firstAdhanMinutes}
+              />
             )}
           </>
         )}
