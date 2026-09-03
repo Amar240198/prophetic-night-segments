@@ -11,6 +11,111 @@ import { useMemo, useState } from "react";
 interface ScheduleToolsProps {
   result: NightCalculationResult;
   input: NightCalculationInput;
+  firstAdhanMinutes: number | null;
+}
+
+interface NightEndEvent {
+  id: "buffer-wake-up" | "first-adhan-reminder" | "buffer-before-fajr" | "fajr";
+  label: string;
+  instant: string;
+}
+
+export const DEFAULT_BUFFER_BEFORE_FAJR_MINUTES = 20;
+
+export function createNightEndSchedule(
+  result: NightCalculationResult,
+  fajrPreparationMinutes: number,
+  firstAdhanMinutes: number | null,
+): NightEndEvent[] {
+  const fajr = Date.parse(result.night.end);
+  const events: NightEndEvent[] = [
+    {
+      id: "buffer-wake-up",
+      label: "Buffer Wake-Up Time",
+      instant: result.dawudPattern.fajrWake.suggestedAlarm,
+    },
+    {
+      id: "buffer-before-fajr",
+      label: "Buffer Before Fajr",
+      instant: new Date(fajr - fajrPreparationMinutes * 60_000).toISOString(),
+    },
+    { id: "fajr", label: "Fajr", instant: result.night.end },
+  ];
+  if (firstAdhanMinutes !== null) {
+    events.push({
+      id: "first-adhan-reminder",
+      label: "First Adhan Reminder",
+      instant: new Date(fajr - firstAdhanMinutes * 60_000).toISOString(),
+    });
+  }
+  return events.sort((left, right) => Date.parse(left.instant) - Date.parse(right.instant));
+}
+
+interface NightEndTimelineProps {
+  result: NightCalculationResult;
+  timeZone: string;
+  firstAdhanMinutes: number | null;
+  bufferBeforeFajrMinutes?: number;
+}
+
+export function NightEndTimeline({
+  result,
+  timeZone,
+  firstAdhanMinutes,
+  bufferBeforeFajrMinutes = DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
+}: NightEndTimelineProps) {
+  const schedule = useMemo(
+    () => createNightEndSchedule(result, bufferBeforeFajrMinutes, firstAdhanMinutes),
+    [result, bufferBeforeFajrMinutes, firstAdhanMinutes],
+  );
+
+  return (
+    <section
+      className="mt-7 border border-white/10 bg-[#0c2229] p-5 sm:p-7"
+      aria-labelledby="night-end-title"
+    >
+      <p className="text-xs font-bold tracking-[0.16em] text-[#d0ae67]">END OF NIGHT</p>
+      <h3 id="night-end-title" className="mt-2 font-serif text-2xl">
+        End of the calculated night
+      </h3>
+      <p className="mt-2 text-sm leading-6 text-[#9baca7]">
+        Events are shown in chronological order. Fajr remains the final boundary of the Islamic
+        night.
+      </p>
+      <ol className="mt-5 grid gap-2" aria-live="polite">
+        {schedule.map((event, index) => {
+          const coincidesWithPrevious = index > 0 && schedule[index - 1]!.instant === event.instant;
+          return (
+            <li
+              key={event.id}
+              className={`grid grid-cols-[1.25rem_1fr_auto] items-center gap-3 border p-3 ${
+                event.id === "fajr"
+                  ? "border-[#d0ae67] bg-[#d0ae67]/10"
+                  : "border-white/10 bg-[#06151a]"
+              }`}
+            >
+              <span aria-hidden="true" className="text-center text-[#d0ae67]">
+                {index === schedule.length - 1 ? "●" : "↓"}
+              </span>
+              <span>
+                {event.label}
+                {coincidesWithPrevious && (
+                  <span className="ml-2 text-xs text-[#8ea29d]">Same time as above</span>
+                )}
+              </span>
+              <strong className="text-[#d0ae67]">
+                {formatInstant(event.instant, { timeZone, displayFormat: "24h" })}
+              </strong>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-3 text-xs leading-5 text-[#8ea29d]">
+        Fajr is the beginning of Fajr / true dawn (al-Fajr al-Ṣādiq). The First Adhan Reminder is a
+        selected scheduling offset, not an astronomical dawn calculation.
+      </p>
+    </section>
+  );
 }
 
 function calendarInstant(value: string): string {
@@ -28,9 +133,21 @@ function calendarText(value: string): string {
     .replace(/;/g, "\\;");
 }
 
-function downloadCalendar(result: NightCalculationResult, preferences: AlarmPreferences) {
-  const events = createAlarmPlan(result, preferences)
-    .alarms.map((alarm) => {
+export function createCalendarContents(
+  result: NightCalculationResult,
+  preferences: AlarmPreferences,
+  firstAdhanMinutes: number | null,
+): string {
+  const alarms = createAlarmPlan(result, preferences).alarms;
+  if (firstAdhanMinutes !== null) {
+    alarms.push({
+      id: "first-adhan-reminder",
+      label: "First Adhan Reminder",
+      instant: new Date(Date.parse(result.night.end) - firstAdhanMinutes * 60_000).toISOString(),
+    });
+  }
+  const events = alarms
+    .map((alarm) => {
       const end = new Date(Date.parse(alarm.instant) + 5 * 60_000).toISOString();
       return [
         "BEGIN:VEVENT",
@@ -44,13 +161,21 @@ function downloadCalendar(result: NightCalculationResult, preferences: AlarmPref
       ].join("\r\n");
     })
     .join("\r\n");
-  const contents = [
+  return [
     "BEGIN:VCALENDAR",
     "VERSION:2.0",
     "PRODID:-//Prophetic Night Segments//EN",
     events,
     "END:VCALENDAR",
   ].join("\r\n");
+}
+
+function downloadCalendar(
+  result: NightCalculationResult,
+  preferences: AlarmPreferences,
+  firstAdhanMinutes: number | null,
+) {
+  const contents = createCalendarContents(result, preferences, firstAdhanMinutes);
   const url = URL.createObjectURL(new Blob([contents], { type: "text/calendar;charset=utf-8" }));
   const anchor = document.createElement("a");
   anchor.href = url;
@@ -59,12 +184,12 @@ function downloadCalendar(result: NightCalculationResult, preferences: AlarmPref
   URL.revokeObjectURL(url);
 }
 
-export function ScheduleTools({ result, input }: ScheduleToolsProps) {
+export function ScheduleTools({ result, input, firstAdhanMinutes }: ScheduleToolsProps) {
   const [preferences, setPreferences] = useState<AlarmPreferences>({
     atPart4: true,
     atLastThird: true,
     endPrayerAtPart6: true,
-    fajrPreparationMinutes: 20,
+    fajrPreparationMinutes: DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
   });
   const plan = useMemo(() => createAlarmPlan(result, preferences), [result, preferences]);
 
@@ -128,7 +253,7 @@ export function ScheduleTools({ result, input }: ScheduleToolsProps) {
       </div>
       <button
         type="button"
-        onClick={() => downloadCalendar(result, preferences)}
+        onClick={() => downloadCalendar(result, preferences, firstAdhanMinutes)}
         className="mt-6 border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10"
       >
         Download calendar (.ics)

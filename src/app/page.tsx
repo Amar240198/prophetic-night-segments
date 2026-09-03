@@ -4,7 +4,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { calculateNightSegments as calculateSharedNightSegments } from "@prophetic-night/night-engine";
 import type { NightCalculationInput, NightCalculationResult } from "@prophetic-night/night-engine";
 import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
-import { ScheduleTools } from "@/components/ScheduleTools";
+import { NightEndTimeline, ScheduleTools } from "@/components/ScheduleTools";
 import { useMemo, useState } from "react";
 
 type Activity = "Initial sleep" | "Prayer" | "Final sleep";
@@ -44,6 +44,8 @@ type LivePrayerTimes = {
 type CoordinateCalculationResponse = NightCalculationResult & {
   prayerTimes: { provider: string; calculationMethod: string; timeZone: string };
 };
+
+const firstAdhanOptions = [15, 20, 30, 45, 60] as const;
 
 const locations = [
   { id: "custom", country: "", city: "", countryCode: "", latitude: 0, longitude: 0 },
@@ -398,6 +400,8 @@ export default function Home() {
   const [providerError, setProviderError] = useState("");
   const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(null);
   const [submitted, setSubmitted] = useState<NightCalculationInput | null>(null);
+  const [firstAdhanMinutes, setFirstAdhanMinutes] = useState<number | null>(null);
+  const [timelineView, setTimelineView] = useState<"general" | "dawud" | "prophetic">("general");
 
   const calculation = useMemo(() => {
     if (!submitted) return { result: null, engineResult: null, error: "" };
@@ -597,8 +601,8 @@ export default function Home() {
             Prophetic Night Segments
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#9baca7] sm:mt-6 sm:text-lg sm:leading-8">
-            Six mathematically exact portions, three conventional thirds, and a careful
-            visualisation of the Dāwūd night pattern.
+            One night, shown through its conventional thirds, the Dāwūd prayer pattern, and the
+            varied timing of Prophetic qiyam.
           </p>
         </div>
       </header>
@@ -622,7 +626,7 @@ export default function Home() {
 
           <form
             onSubmit={loadLivePrayerTimes}
-            className="grid min-w-0 gap-4 md:grid-cols-2 lg:grid-cols-4 lg:items-end"
+            className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5 xl:items-start"
           >
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
               Quick location
@@ -679,6 +683,36 @@ export default function Home() {
                 <option value="manual">Trusted timetable / manual times</option>
               </select>
             </label>
+            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+              First Adhan Reminder
+              <select
+                value={firstAdhanMinutes ?? ""}
+                onChange={(event) =>
+                  setFirstAdhanMinutes(
+                    event.target.value === "" ? null : Number(event.target.value),
+                  )
+                }
+                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+              >
+                <option value="">Off</option>
+                {firstAdhanOptions.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                    {minutes} minutes before Fajr
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
+              Fajr preparation buffer
+              <input
+                type="number"
+                min="0"
+                value={fajrBufferMinutes}
+                onChange={(event) => setFajrBufferMinutes(Number(event.target.value))}
+                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
+              />
+              <span className="text-xs text-[#8ea29d]">Minutes before Fajr</span>
+            </label>
             {prayerTimeSource === "coordinates" && (
               <>
                 <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
@@ -733,7 +767,7 @@ export default function Home() {
                   {locating ? "Finding precise location…" : "Use my precise location"}
                 </button>
                 <p
-                  className="text-xs text-[#8ea29d] md:col-span-2 lg:col-span-4"
+                  className="text-xs text-[#8ea29d] md:col-span-2 xl:col-span-5"
                   aria-live="polite"
                 >
                   {locationAccuracy === null
@@ -798,17 +832,6 @@ export default function Home() {
                 </label>
               </>
             )}
-            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Fajr preparation buffer
-              <input
-                type="number"
-                min="0"
-                value={fajrBufferMinutes}
-                onChange={(event) => setFajrBufferMinutes(Number(event.target.value))}
-                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
-              />
-              <span className="text-xs text-[#8ea29d]">Minutes before Fajr</span>
-            </label>
             {prayerTimeSource === "aladhan" && (
               <>
                 <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
@@ -872,7 +895,7 @@ export default function Home() {
               </label>
             )}
             {prayerTimeSource === "aladhan" && (
-              <details className="md:col-span-2 lg:col-span-4 border border-white/10 bg-[#06151a] p-4">
+              <details className="md:col-span-2 xl:col-span-5 border border-white/10 bg-[#06151a] p-4">
                 <summary className="cursor-pointer font-semibold text-[#d0ae67]">
                   Advanced AlAdhan settings
                 </summary>
@@ -1066,10 +1089,17 @@ export default function Home() {
 
         {result && (
           <>
+            {engineResult && submitted && (
+              <ScheduleTools
+                result={engineResult}
+                input={submitted}
+                firstAdhanMinutes={firstAdhanMinutes}
+              />
+            )}
             <section aria-labelledby="night-summary">
               <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">02 / NIGHT MAP</p>
               <h2 id="night-summary" className="mt-2 font-serif text-3xl sm:text-4xl">
-                Six-part timeline
+                One night, three complementary views
               </h2>
               <p className="mt-3 text-[#9baca7]">
                 {formatCalendarDate(result.start, displayTimeZone)}
@@ -1078,156 +1108,216 @@ export default function Home() {
                 {formatTime(result.end, displayTimeZone)} ·{" "}
                 {formatDuration(result.durationMilliseconds)}
               </p>
-
-              <div className="mt-8 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
-                {result.segments.map((segment) => (
-                  <article
-                    key={segment.number}
-                    className={`flex min-w-0 min-h-64 flex-col border p-5 ${
-                      segment.activity === "Prayer"
-                        ? "border-[#d0ae67]/60 bg-[#d0ae67]/10"
-                        : "border-white/10 bg-[#0c2229]"
+              {engineResult && submitted && (
+                <NightEndTimeline
+                  result={engineResult}
+                  timeZone={submitted.timeZone}
+                  firstAdhanMinutes={firstAdhanMinutes}
+                />
+              )}
+              <div
+                className="mt-8 grid overflow-hidden border border-white/15 sm:grid-cols-3"
+                role="tablist"
+                aria-label="Night timeline interpretation"
+              >
+                {(
+                  [
+                    ["general", "General Night Division"],
+                    ["dawud", "Dawud عليه السلام Pattern"],
+                    ["prophetic", "Prophetic Qiyam"],
+                  ] as const
+                ).map(([view, label]) => (
+                  <button
+                    key={view}
+                    type="button"
+                    role="tab"
+                    id={`timeline-tab-${view}`}
+                    aria-selected={timelineView === view}
+                    aria-controls={`timeline-panel-${view}`}
+                    onClick={() => setTimelineView(view)}
+                    className={`px-4 py-4 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[#d0ae67] ${
+                      timelineView === view
+                        ? "bg-[#d0ae67] text-[#102027]"
+                        : "border-white/10 bg-[#06151a] text-[#c8d4d0] hover:bg-[#0c2229] sm:border-l"
                     }`}
                   >
-                    <span className="font-serif text-3xl text-[#d0ae67]">0{segment.number}</span>
-                    <h3 className="mt-6 text-lg font-semibold">Part {segment.number}</h3>
-                    <p className="mt-1 text-sm text-[#a8b8b3]">{segment.activity}</p>
-
-                    {segment.isWithinLastThird && (
-                      <strong className="mt-3 text-[0.65rem] tracking-[0.16em] text-[#d0ae67]">
-                        LAST THIRD
-                      </strong>
-                    )}
-
-                    <div className="mt-auto pt-8 text-sm">
-                      <time className="block">{formatTime(segment.start, displayTimeZone)}</time>
-                      <time className="block text-[#9baca7]">
-                        → {formatTime(segment.end, displayTimeZone)}
-                      </time>
-                      <p className="mt-3 text-xs text-[#839792]">
-                        {segment.third} · {formatDuration(segment.durationMilliseconds)}
-                      </p>
-                    </div>
-                  </article>
+                    {label}
+                  </button>
                 ))}
               </div>
-
-              <p className="mt-4 text-xs text-[#839792]">
-                Exact millisecond values are used internally. Displayed clock values are formatted
-                separately.
-              </p>
-            </section>
-
-            <section aria-labelledby="thirds-heading">
-              <h2 id="thirds-heading" className="font-serif text-3xl sm:text-4xl">
-                Three conventional thirds
-              </h2>
-              <div className="mt-7 grid min-w-0 gap-3 md:grid-cols-3">
-                {[
-                  {
-                    label: "First third",
-                    parts: "Parts 1 + 2",
-                    start: result.boundaries[0]!,
-                    end: result.boundaries[2]!,
-                  },
-                  {
-                    label: "Second third",
-                    parts: "Parts 3 + 4",
-                    start: result.boundaries[2]!,
-                    end: result.boundaries[4]!,
-                  },
-                  {
-                    label: "Last third",
-                    parts: "Parts 5 + 6",
-                    start: result.boundaries[4]!,
-                    end: result.boundaries[6]!,
-                  },
-                ].map((third, index) => (
-                  <article
-                    key={third.label}
-                    className={`min-w-0 border p-5 sm:p-6 ${
-                      index === 2
-                        ? "border-[#d0ae67]/60 bg-[#d0ae67]/10"
-                        : "border-white/10 bg-[#0c2229]"
-                    }`}
-                  >
-                    <span className="text-sm text-[#d0ae67]">0{index + 1}</span>
-                    <h3 className="mt-3 text-xl font-semibold">{third.label}</h3>
-                    <p className="mt-2 text-sm text-[#9baca7]">{third.parts}</p>
-                    <p className="mt-6 text-sm">
-                      {formatTime(third.start, displayTimeZone)} →{" "}
-                      {formatTime(third.end, displayTimeZone)}
-                    </p>
-                  </article>
-                ))}
-              </div>
-              <p className="mt-5 border-l-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm">
-                The last third begins at{" "}
-                <strong className="text-[#d0ae67]">
-                  {formatTime(result.lastThirdStart, displayTimeZone)}
-                </strong>
-                , the beginning of Part 5. Part 4 remains in the second third.
-              </p>
-            </section>
-
-            <section className="grid min-w-0 gap-5 lg:grid-cols-2">
-              <article className="min-w-0 border border-white/10 bg-[#0c2229] p-5 sm:p-9">
-                <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
-                  DĀWŪD NIGHT PATTERN
+              <details className="mt-4 w-fit max-w-full border border-[#d0ae67]/30 bg-[#d0ae67]/5 p-3 text-sm">
+                <summary className="cursor-pointer font-semibold text-[#d0ae67]">
+                  <span aria-hidden="true">ⓘ </span>About these views
+                </summary>
+                <p className="mt-3 leading-6 text-[#b9c6c2]">
+                  These views describe the same night using different levels of detail. Thirds are
+                  the general division. Sixths are used here to clearly visualise the
+                  sleep–prayer–sleep pattern of Dawud عليه السلام.
                 </p>
-                <h2 className="mt-3 font-serif text-3xl">Sleep · Prayer · Sleep</h2>
-                <dl className="mt-7 divide-y divide-white/10">
+              </details>
+            </section>
+
+            {timelineView === "general" && (
+              <section
+                id="timeline-panel-general"
+                role="tabpanel"
+                aria-labelledby="timeline-tab-general"
+              >
+                <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
+                  GENERAL NIGHT DIVISION
+                </p>
+                <h2 className="mt-2 font-serif text-3xl sm:text-4xl">
+                  Conventional Night Division
+                </h2>
+                <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
+                  This is the common way of dividing the night when discussing the first, middle,
+                  and last third of the night.
+                </p>
+                <div className="mt-7 grid min-w-0 gap-3 md:grid-cols-3">
                   {[
                     {
-                      label: "Initial sleep · Parts 1–3",
+                      label: "First Third",
                       start: result.boundaries[0]!,
-                      end: result.midpoint,
+                      end: result.boundaries[2]!,
                     },
                     {
-                      label: "Prayer · Parts 4–5",
-                      start: result.midpoint,
-                      end: result.finalSixthStart,
+                      label: "Middle Third",
+                      start: result.boundaries[2]!,
+                      end: result.boundaries[4]!,
                     },
                     {
-                      label: "Final sleep · Part 6",
-                      start: result.finalSixthStart,
-                      end: result.end,
+                      label: "Last Third",
+                      start: result.boundaries[4]!,
+                      end: result.boundaries[6]!,
                     },
-                  ].map((row) => (
-                    <div key={row.label} className="grid gap-2 py-4 sm:grid-cols-[1fr_auto]">
-                      <dt>{row.label}</dt>
-                      <dd className="text-sm text-[#d0ae67]">
-                        {formatTime(row.start, displayTimeZone)} →{" "}
-                        {formatTime(row.end, displayTimeZone)}
+                  ].map((third, index) => (
+                    <article
+                      key={third.label}
+                      className={`min-w-0 border p-5 sm:p-6 ${
+                        index === 2
+                          ? "border-[#d0ae67]/60 bg-[#d0ae67]/10"
+                          : "border-white/10 bg-[#0c2229]"
+                      }`}
+                    >
+                      <span className="text-sm text-[#d0ae67]">0{index + 1}</span>
+                      <h3 className="mt-3 text-xl font-semibold">{third.label}</h3>
+                      <p className="mt-6 text-sm">
+                        {formatTime(third.start, displayTimeZone)} →{" "}
+                        {formatTime(third.end, displayTimeZone)}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+                <p className="mt-5 border-l-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm">
+                  The last third begins at{" "}
+                  <strong className="text-[#d0ae67]">
+                    {formatTime(result.lastThirdStart, displayTimeZone)}
+                  </strong>
+                  .
+                </p>
+              </section>
+            )}
+
+            {timelineView === "dawud" && (
+              <section
+                id="timeline-panel-dawud"
+                role="tabpanel"
+                aria-labelledby="timeline-tab-dawud"
+              >
+                <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
+                  DAWUD عليه السلام PRAYER PATTERN
+                </p>
+                <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Dawud عليه السلام Pattern</h2>
+                <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
+                  The night is divided into six equal parts here to illustrate the hadith describing
+                  Dawud عليه السلام: he slept half the night, prayed one third, then slept one
+                  sixth.
+                </p>
+                <div className="mt-8 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
+                  {result.segments.map((segment) => (
+                    <article
+                      key={segment.number}
+                      className={`flex min-w-0 min-h-64 flex-col border p-5 ${
+                        segment.activity === "Prayer"
+                          ? "border-[#d0ae67]/60 bg-[#d0ae67]/10"
+                          : "border-white/10 bg-[#0c2229]"
+                      }`}
+                    >
+                      <span className="font-serif text-3xl text-[#d0ae67]">0{segment.number}</span>
+                      <h3 className="mt-6 text-lg font-semibold">Part {segment.number}</h3>
+                      <p className="mt-1 text-sm text-[#a8b8b3]">{segment.activity}</p>
+                      <div className="mt-auto pt-8 text-sm">
+                        <time className="block">{formatTime(segment.start, displayTimeZone)}</time>
+                        <time className="block text-[#9baca7]">
+                          → {formatTime(segment.end, displayTimeZone)}
+                        </time>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <dl className="mt-6 grid gap-3 md:grid-cols-3">
+                  {[
+                    ["Sleep · Parts 1–3", result.boundaries[0]!, result.midpoint],
+                    ["Pray · Parts 4–5", result.midpoint, result.finalSixthStart],
+                    ["Sleep · Part 6", result.finalSixthStart, result.end],
+                  ].map(([label, start, end]) => (
+                    <div key={label} className="border border-white/10 bg-[#06151a] p-4">
+                      <dt className="font-semibold">{label}</dt>
+                      <dd className="mt-2 text-sm text-[#d0ae67]">
+                        {formatTime(start, displayTimeZone)} → {formatTime(end, displayTimeZone)}
                       </dd>
                     </div>
                   ))}
                 </dl>
                 <p className="mt-5 text-sm leading-6 text-[#8ea29d]">
-                  A scheduling visualisation based on the night pattern attributed to Prophet Dāwūd
-                  in Ṣaḥīḥ al-Bukhārī 1131. It is not compulsory or a religious ruling.
+                  Reference: Ṣaḥīḥ al-Bukhārī 1131. This is an informational visualisation, not a
+                  compulsory practice or religious ruling.
                 </p>
-              </article>
+              </section>
+            )}
 
-              <article className="min-w-0 border border-white/10 p-5 sm:p-9">
+            {timelineView === "prophetic" && (
+              <section
+                id="timeline-panel-prophetic"
+                role="tabpanel"
+                aria-labelledby="timeline-tab-prophetic"
+              >
                 <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
-                  IMPORTANT DISTINCTION
+                  PROPHETIC QIYAM
                 </p>
-                <h2 className="mt-3 font-serif text-3xl">Two overlapping layers</h2>
-                <p className="mt-6 leading-7 text-[#b9c6c2]">
-                  The Dāwūd prayer period covers Parts 4–5. The mathematical last third covers Parts
-                  5–6. Part 5 is where the two layers overlap.
+                <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Prophetic Qiyam Timeline</h2>
+                <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
+                  The Prophet Muhammad ﷺ prayed at different portions of the night on different
+                  occasions. His night prayer was not restricted to one fixed half–third–sixth
+                  schedule.
                 </p>
-                <p className="mt-4 leading-7 text-[#9baca7]">
-                  An authentic narration describes the Prophet Muhammad ﷺ sleeping, rising during
-                  the latter part of the night to pray, returning to bed, and rising again for Fajr.
-                  The exact six-part schedule shown here corresponds directly to the separately
-                  narrated Dāwūd pattern.
+                <div className="mt-8 border border-white/10 bg-[#0c2229] p-5 sm:p-8">
+                  <div className="flex items-center gap-3" aria-label="Maghrib to Fajr night span">
+                    <span className="h-3 w-3 shrink-0 rounded-full bg-[#d0ae67]" />
+                    <span className="h-1 flex-1 bg-gradient-to-r from-[#d0ae67] via-[#38606a] to-[#d0ae67]" />
+                    <span className="h-3 w-3 shrink-0 rounded-full bg-[#d0ae67]" />
+                  </div>
+                  <div className="mt-3 flex justify-between gap-4 text-sm">
+                    <p>
+                      <strong className="block">Maghrib · night begins</strong>
+                      {formatTime(result.start, displayTimeZone)}
+                    </p>
+                    <p className="text-right">
+                      <strong className="block">Fajr · night ends</strong>
+                      {formatTime(result.end, displayTimeZone)}
+                    </p>
+                  </div>
+                  <p className="mx-auto mt-8 max-w-2xl text-center leading-7 text-[#b9c6c2]">
+                    Qiyam occurred within this same night span at varying portions. No fixed
+                    six-part formula is imposed on this view.
+                  </p>
+                </div>
+                <p className="mt-5 text-sm text-[#8ea29d]">
+                  Reference: Ṣaḥīḥ al-Bukhārī 1146 describes a sleep–prayer–sleep–Fajr sequence
+                  without establishing one exact six-part schedule.
                 </p>
-                <p className="mt-5 text-sm text-[#8ea29d]">Reference: Ṣaḥīḥ al-Bukhārī 1146</p>
-              </article>
-            </section>
-            {engineResult && submitted && <ScheduleTools result={engineResult} input={submitted} />}
+              </section>
+            )}
           </>
         )}
 
