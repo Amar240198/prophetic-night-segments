@@ -1272,9 +1272,9 @@ export default function Home() {
                 </p>
                 <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Prophetic Qiyam Timeline</h2>
                 <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
-                  The Prophet Muhammad ﷺ prayed at different portions of the night on different
-                  occasions. His night prayer was not restricted to one fixed half–third–sixth
-                  schedule.
+                  The Prophet Muhammad ﷺ did not restrict his night prayer to one fixed point of the
+                  night. Authentic narrations describe him sleeping, waking, and praying during the
+                  night, with the observed timing varying across different reports and occasions.
                 </p>
                 <div className="mt-8 border border-white/10 bg-[#0c2229] p-5 sm:p-8">
                   <div className="flex items-center gap-3" aria-label="Maghrib to Fajr night span">
@@ -1292,15 +1292,108 @@ export default function Home() {
                       {formatTime(result.end, displayTimeZone)}
                     </p>
                   </div>
-                  <p className="mx-auto mt-8 max-w-2xl text-center leading-7 text-[#b9c6c2]">
-                    Qiyam occurred within this same night span at varying portions. No fixed
-                    six-part formula is imposed on this view.
+                  <div className="mx-auto mt-8 max-w-3xl text-center">
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#d0ae67]">
+                      Timing varied across authentic reports
+                    </p>
+                    <p className="mt-3 leading-7 text-[#b9c6c2]">
+                      Anas رضي الله عنه reported that one could observe him praying at night on some
+                      occasions and sleeping on others. ‘Ā’ishah رضي الله عنها reported his Witr at
+                      different hours of the night. Other individual reports describe particular
+                      nights in more detail; they are evidence of those occasions, not one fixed
+                      nightly timetable.
+                    </p>
+                  </div>
+                  <div
+                    className="mt-7 grid gap-2 sm:grid-cols-3"
+                    aria-label="Variation in reported qiyam timing"
+                  >
+                    {[
+                      ["Earlier", "Witr was not confined to the end"],
+                      ["Middle", "Prayer was also reported around midnight"],
+                      ["Later", "Some reports describe prayer in the last part"],
+                    ].map(([period, explanation]) => (
+                      <div key={period} className="border border-white/10 bg-[#06151a] p-4">
+                        <strong className="text-[#d0ae67]">{period} night</strong>
+                        <p className="mt-2 text-sm leading-5 text-[#9baca7]">{explanation}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-7 border-l-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm leading-6 text-[#c8d4d0]">
+                    This varied Prophetic qiyam evidence is distinct from the separately narrated
+                    Dāwūd عليه السلام pattern: sleep half the night, pray one third, then sleep one
+                    sixth. This view does not impose that six-part pattern on the Prophet Muhammad
+                    ﷺ.
                   </p>
                 </div>
-                <p className="mt-5 text-sm text-[#8ea29d]">
-                  Reference: Ṣaḥīḥ al-Bukhārī 1146 describes a sleep–prayer–sleep–Fajr sequence
-                  without establishing one exact six-part schedule.
-                </p>
+                <div className="mt-6" aria-labelledby="prophetic-qiyam-evidence">
+                  <h3 id="prophetic-qiyam-evidence" className="text-lg font-semibold">
+                    Evidence
+                  </h3>
+                  <ul className="mt-3 grid gap-3 text-sm leading-6 text-[#aebcb8] lg:grid-cols-2">
+                    <li className="border border-white/10 p-4">
+                      <a
+                        href="https://sunnah.com/bukhari:1141"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
+                      >
+                        Ṣaḥīḥ al-Bukhārī 1141
+                      </a>
+                      <p className="mt-2">
+                        Anas ibn Mālik رضي الله عنه described observing the Prophet ﷺ both praying
+                        and sleeping at night, rather than at one consistently observable time.
+                      </p>
+                    </li>
+                    <li className="border border-white/10 p-4">
+                      <a
+                        href="https://sunnah.com/bukhari:996"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
+                      >
+                        Ṣaḥīḥ al-Bukhārī 996
+                      </a>
+                      <p className="mt-2">
+                        ‘Ā’ishah رضي الله عنها reported that his Witr occurred at varying hours,
+                        extending from after ‘Ishā’ to the last hour of the night.
+                      </p>
+                    </li>
+                    <li className="border border-white/10 p-4">
+                      <a
+                        href="https://sunnah.com/bukhari:1146"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
+                      >
+                        Ṣaḥīḥ al-Bukhārī 1146
+                      </a>
+                      <p className="mt-2">
+                        ‘Ā’ishah رضي الله عنها described a particular pattern of sleeping early,
+                        rising in the last part to pray, returning to bed, and then responding to
+                        the call for Fajr.
+                      </p>
+                    </li>
+                    <li className="border border-white/10 p-4">
+                      <a
+                        href="https://sunnah.com/muslim:763b"
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
+                      >
+                        Ṣaḥīḥ Muslim 763b
+                      </a>
+                      <p className="mt-2">
+                        Ibn ‘Abbās رضي الله عنهما observed the Prophet ﷺ sleep until around
+                        midnight—slightly before or after—then rise, prepare, and pray.
+                      </p>
+                    </li>
+                  </ul>
+                  <p className="mt-3 text-xs leading-5 text-[#8ea29d]">
+                    These narrations report different observations and specific occasions. They do
+                    not establish a single exact fractional schedule for every night.
+                  </p>
+                </div>
               </section>
             )}
             {engineResult && submitted && (

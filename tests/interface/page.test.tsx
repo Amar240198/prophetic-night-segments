@@ -119,8 +119,16 @@ describe("Prophetic Night Segments interface", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Prophetic Qiyam" }));
     expect(screen.getByRole("heading", { name: "Prophetic Qiyam Timeline" })).toBeInTheDocument();
     expect(
-      screen.getByText(/not restricted to one fixed half–third–sixth schedule/),
+      screen.getByText(/did not restrict his night prayer to one fixed point/),
     ).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ṣaḥīḥ al-Bukhārī 1141" })).toHaveAttribute(
+      "href",
+      "https://sunnah.com/bukhari:1141",
+    );
+    expect(screen.getByRole("link", { name: "Ṣaḥīḥ al-Bukhārī 996" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ṣaḥīḥ al-Bukhārī 1146" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ṣaḥīḥ Muslim 763b" })).toBeInTheDocument();
+    expect(screen.getByText(/distinct from the separately narrated Dāwūd/)).toBeInTheDocument();
     expect(screen.queryByText("Part 1")).not.toBeInTheDocument();
     expect(screen.getByText("Maghrib · night begins")).toBeInTheDocument();
     expect(screen.getByText("Fajr · night ends")).toBeInTheDocument();
