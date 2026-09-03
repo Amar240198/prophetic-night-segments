@@ -40,6 +40,7 @@ describe("Prophetic Night Segments interface", () => {
       screen.getByText(/One night, shown through its conventional thirds/),
     ).toBeInTheDocument();
     expect(screen.getByText(/published 2026 London Unified timetable/)).toBeInTheDocument();
+    expect(screen.queryByLabelText("Fajr preparation buffer")).not.toBeInTheDocument();
   });
 
   it("passes provider output into the shared engine and renders exact segments", async () => {

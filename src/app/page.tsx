@@ -46,6 +46,7 @@ type CoordinateCalculationResponse = NightCalculationResult & {
 };
 
 const firstAdhanOptions = [15, 20, 30, 45, 60] as const;
+const DEFAULT_FAJR_WAKE_BUFFER_MINUTES = 20;
 
 const locations = [
   { id: "custom", country: "", city: "", countryCode: "", latitude: 0, longitude: 0 },
@@ -390,7 +391,6 @@ export default function Home() {
   const [manualMaghrib, setManualMaghrib] = useState("21:02");
   const [manualFajr, setManualFajr] = useState("03:15");
   const [manualTimeZone, setManualTimeZone] = useState("Europe/London");
-  const [fajrBufferMinutes, setFajrBufferMinutes] = useState(20);
   const [latitudeAdjustmentMethod, setLatitudeAdjustmentMethod] = useState(3);
   const [midnightMode, setMidnightMode] = useState(0);
   const [shafaq, setShafaq] = useState("general");
@@ -464,7 +464,10 @@ export default function Home() {
           source: body.prayerTimes.provider,
           serviceDate,
         });
-        setSubmitted({ ...body.input, fajrWakeBufferMinutes: fajrBufferMinutes });
+        setSubmitted({
+          ...body.input,
+          fajrWakeBufferMinutes: DEFAULT_FAJR_WAKE_BUFFER_MINUTES,
+        });
         return;
       }
       if (prayerTimeSource === "manual") {
@@ -494,7 +497,7 @@ export default function Home() {
           maghrib,
           fajr,
           timeZone: manualTimeZone,
-          fajrWakeBufferMinutes: fajrBufferMinutes,
+          fajrWakeBufferMinutes: DEFAULT_FAJR_WAKE_BUFFER_MINUTES,
         });
         return;
       }
@@ -530,7 +533,7 @@ export default function Home() {
         maghrib: prayerTimes.maghrib,
         fajr: prayerTimes.fajr,
         timeZone: prayerTimes.timeZone,
-        fajrWakeBufferMinutes: fajrBufferMinutes,
+        fajrWakeBufferMinutes: DEFAULT_FAJR_WAKE_BUFFER_MINUTES,
       });
     } catch (error) {
       setProviderError(
@@ -626,7 +629,7 @@ export default function Home() {
 
           <form
             onSubmit={loadLivePrayerTimes}
-            className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-5 xl:items-start"
+            className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-start"
           >
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
               Quick location
@@ -702,17 +705,6 @@ export default function Home() {
                 ))}
               </select>
             </label>
-            <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Fajr preparation buffer
-              <input
-                type="number"
-                min="0"
-                value={fajrBufferMinutes}
-                onChange={(event) => setFajrBufferMinutes(Number(event.target.value))}
-                className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
-              />
-              <span className="text-xs text-[#8ea29d]">Minutes before Fajr</span>
-            </label>
             {prayerTimeSource === "coordinates" && (
               <>
                 <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
@@ -767,7 +759,7 @@ export default function Home() {
                   {locating ? "Finding precise location…" : "Use my precise location"}
                 </button>
                 <p
-                  className="text-xs text-[#8ea29d] md:col-span-2 xl:col-span-5"
+                  className="text-xs text-[#8ea29d] md:col-span-2 xl:col-span-4"
                   aria-live="polite"
                 >
                   {locationAccuracy === null
@@ -895,7 +887,7 @@ export default function Home() {
               </label>
             )}
             {prayerTimeSource === "aladhan" && (
-              <details className="md:col-span-2 xl:col-span-5 border border-white/10 bg-[#06151a] p-4">
+              <details className="md:col-span-2 xl:col-span-4 border border-white/10 bg-[#06151a] p-4">
                 <summary className="cursor-pointer font-semibold text-[#d0ae67]">
                   Advanced AlAdhan settings
                 </summary>
