@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { calculateNightSegments } from "@prophetic-night/night-engine";
 import { CalendarCard } from "./CalendarCard";
+
+beforeEach(() => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ configured: false, connected: false }) }),
+  );
+});
 
 afterEach(() => {
   cleanup();

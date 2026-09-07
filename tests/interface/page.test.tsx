@@ -13,19 +13,23 @@ afterEach(() => {
 beforeEach(() => {
   vi.stubGlobal(
     "fetch",
-    vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        maghrib: "2026-07-23T20:02:00Z",
-        fajr: "2026-07-24T02:15:00Z",
-        timeZone: "Europe/London",
-        location: "London, United Kingdom",
-        calculationMethod: "London Unified Prayer Timetable 2026",
-        juristicSchool: "Standard",
-        source: "London Unified",
-        serviceDate: "2026-07-23",
-      }),
-    }),
+    vi.fn().mockImplementation(async (url: string) =>
+      url === "/api/google-calendar/session"
+        ? { ok: true, json: async () => ({ configured: false, connected: false }) }
+        : {
+            ok: true,
+            json: async () => ({
+              maghrib: "2026-07-23T20:02:00Z",
+              fajr: "2026-07-24T02:15:00Z",
+              timeZone: "Europe/London",
+              location: "London, United Kingdom",
+              calculationMethod: "London Unified Prayer Timetable 2026",
+              juristicSchool: "Standard",
+              source: "London Unified",
+              serviceDate: "2026-07-23",
+            }),
+          },
+    ),
   );
 });
 
@@ -77,7 +81,9 @@ describe("Prophetic Night Segments interface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
 
     await screen.findByRole("heading", { name: "Conventional Night Division" });
-    expect(fetch).not.toHaveBeenCalled();
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
+      "/api/google-calendar/session",
+    ]);
     expect(screen.getByText("Trusted timetable / manual input")).toBeInTheDocument();
   });
 

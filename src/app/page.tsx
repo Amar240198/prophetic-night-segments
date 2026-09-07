@@ -1403,6 +1403,7 @@ export default function Home() {
                   result={engineResult}
                   dawudSelected={timelineView === "dawud"}
                   prayerSource={providerInfo?.source ?? "Supplied prayer times"}
+                  firstAdhanMinutes={firstAdhanMinutes}
                 />
                 <ScheduleTools
                   result={engineResult}

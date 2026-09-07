@@ -1,6 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { GoogleCalendarSection } from "./GoogleCalendarSection";
+import { DEFAULT_BUFFER_BEFORE_FAJR_MINUTES } from "./ScheduleTools";
+import { buildGooglePlan } from "@/lib/google-calendar/plan";
 import type { NightCalculationResult } from "@prophetic-night/night-engine";
 import { buildCalendarEvents, formatCalendarTime } from "@/lib/calendar/buildCalendarEvents";
 import { generateICS } from "@/lib/calendar/generateICS";
@@ -10,10 +13,12 @@ export function CalendarCard({
   result,
   dawudSelected,
   prayerSource,
+  firstAdhanMinutes = null,
 }: {
   result: NightCalculationResult;
   dawudSelected: boolean;
   prayerSource: string;
+  firstAdhanMinutes?: number | null;
 }) {
   const [buffer, setBuffer] = useState("15");
   const [custom, setCustom] = useState("15");
@@ -163,6 +168,16 @@ export function CalendarCard({
           </ul>
         </details>
       )}
+      <GoogleCalendarSection
+        valid={valid}
+        events={buildGooglePlan(result, {
+          wakeBufferMinutes: valid ? minutes : 0,
+          dawudSelected,
+          prayerSource,
+          fajrPreparationMinutes: DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
+          firstAdhanMinutes,
+        })}
+      />
       <p className="mt-4 text-xs leading-5 text-[#8ea29d]">
         One-night export for Apple Calendar, Google Calendar, Outlook and other .ics applications.
         Set notifications in your calendar app. Recalculate and export again if prayer times change.

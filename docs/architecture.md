@@ -20,6 +20,17 @@ Epoch milliseconds are integers. Boundary `i` is `start + floor(total × i / 6)`
 
 Fastify supplies schema validation, a 16 KiB request limit, secure headers, an explicit development CORS allow-list, sanitised errors, and OpenAPI. `/api/v1/night/calculate` accepts already-supplied instants. `/api/v1/night/calculate-from-coordinates` validates latitude, longitude, service date, and calculation method, asks the configured provider for two civil dates, and then passes only normalised instants to the engine. React/Vite supplies a responsive client and calls the same REST API used by licensees. Development proxying avoids a second browser origin.
 
+## Optional Google Calendar transport
+
+The Next.js web app's `src/lib/google-calendar/plan.ts` consumes existing engine
+boundaries and the shared alarm planner. It does not source or recalculate prayer
+times. `src/app/api/google-calendar` provides server-side OAuth, session status,
+selected event insertion, and disconnect. Server modules handle encrypted cookies,
+PKCE/state validation, bounded input validation, and Google API requests; client
+components receive connection status and per-event outcomes only. The existing
+`src/lib/calendar` ICS layer remains independent and unchanged. See the
+[setup guide](google-calendar-setup.md) for credentials, scopes and session limits.
+
 ## Production hardening
 
 Before a public deployment: terminate TLS at a trusted edge, configure exact origins, add per-client rate limits, structured request IDs, availability monitoring, dependency scanning, a response-schema compatibility gate, and data-retention policy. Do not log submitted timetable inputs, coordinates, or location labels by default. Disclose that coordinates are sent server-side to the configured prayer-time provider. Provider secrets must be server-only environment variables and validated during startup.

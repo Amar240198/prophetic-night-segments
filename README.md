@@ -90,6 +90,11 @@ This software performs arithmetic on supplied times. It does not determine praye
 
 ### Qiyam calendar integration
 
+Direct Google Calendar connection is available alongside downloads. Follow the
+[Google Cloud and Vercel setup guide](docs/google-calendar-setup.md) to configure
+OAuth, connect an account, review selected events, and add them to the primary
+calendar. Existing ICS downloads and Google prefilled links remain available.
+
 The Calendar card below the calculation results exports selected events for the calculated
 night. Choose a wake-up buffer (0, 5, 10, 15, 20, 30 minutes or a custom whole number
 from 0–1440), then download the `.ics` file. Wake, last-third and Fajr events are
