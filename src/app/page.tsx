@@ -4,6 +4,7 @@ import { Temporal } from "@js-temporal/polyfill";
 import { calculateNightSegments as calculateSharedNightSegments } from "@prophetic-night/night-engine";
 import type { NightCalculationInput, NightCalculationResult } from "@prophetic-night/night-engine";
 import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
+import { CalendarCard } from "@/components/CalendarCard";
 import { NightEndTimeline, ScheduleTools } from "@/components/ScheduleTools";
 import { useMemo, useState } from "react";
 
@@ -1397,11 +1398,18 @@ export default function Home() {
               </section>
             )}
             {engineResult && submitted && (
-              <ScheduleTools
-                result={engineResult}
-                input={submitted}
-                firstAdhanMinutes={firstAdhanMinutes}
-              />
+              <>
+                <CalendarCard
+                  result={engineResult}
+                  dawudSelected={timelineView === "dawud"}
+                  prayerSource={providerInfo?.source ?? "Supplied prayer times"}
+                />
+                <ScheduleTools
+                  result={engineResult}
+                  input={submitted}
+                  firstAdhanMinutes={firstAdhanMinutes}
+                />
+              </>
             )}
           </>
         )}

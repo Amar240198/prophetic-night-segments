@@ -87,3 +87,39 @@ There is one canonical web application: the root Next.js app. The previous Vite 
 Ṣaḥīḥ al-Bukhārī 1131 describes the night pattern attributed to Prophet Dāwūd: half sleep, one third prayer, then one sixth sleep. With six parts this is `3/6 + 2/6 + 1/6`. Ṣaḥīḥ al-Bukhārī 1146 separately supports a general sleep → prayer → return to sleep → rise for Fajr structure for the Prophet Muhammad ﷺ; it does not establish an exact six-part schedule for his routine.
 
 This software performs arithmetic on supplied times. It does not determine prayer times, issue fatāwā, determine worship validity, or replace qualified scholars. Verify prayer-time inputs with an appropriate trusted source.
+
+### Qiyam calendar integration
+
+The Calendar card below the calculation results exports selected events for the calculated
+night. Choose a wake-up buffer (0, 5, 10, 15, 20, 30 minutes or a custom whole number
+from 0–1440), then download the `.ics` file. Wake, last-third and Fajr events are
+selected by default; final-sixth and prayer-window events are optional. Selecting the
+Dāwūd view uses the existing Parts 4–5 prayer window and offers a go-back-to-sleep
+event at Part 6. Other views use the existing last-third window (Parts 5–6). These
+are optional personal scheduling choices, not additional religious claims.
+
+`src/lib/calendar/buildCalendarEvents.ts` consumes the engine result without changing
+its boundaries. Wake buffers are elapsed minutes and may move the wake event to the
+previous date or before Maghrib. Previews and descriptions include the calculation's
+IANA timezone, local date and UTC offset. Exports use absolute UTC instants, preserving
+DST transitions, midnight rollover and fractional-hour timezone offsets. The engine
+retains millisecond precision; calendar serialization truncates to whole seconds because
+[RFC 5545](https://www.rfc-editor.org/rfc/rfc5545.html) does not support fractional
+seconds. Boundary events have zero duration; the prayer event spans the actual window.
+Invalid buffers raise `CalendarError` with code `INVALID_CALENDAR_BUFFER` and are
+blocked with an inline message in the UI.
+
+`generateICS.ts` provides CRLF delimiters, escaped text, UTF-8 line folding and stable
+event identifiers. The existing alarm-planning download remains available and shares
+this serializer. Calendar reminders depend on application notification settings; files
+do not configure an audible alarm. Reimport behavior and duplicate handling vary by client.
+
+For local verification, run `pnpm dev`, calculate a night, select events in the Calendar
+card, adjust the buffer, and download the file. Import it into Apple Calendar, Google
+Calendar (Settings → Import & export), or Outlook and compare the event dates/times
+with the card, using the same display timezone. Try the Dāwūd view and a custom buffer
+that crosses midnight. The Google Calendar disclosure provides one prefilled event
+link per selection; review and save each event there. No Google authentication is
+required by this app, though Google may require sign-in to save an event. This MVP is
+a one-night export, not a subscription or automatic sync. Live imports into all calendar
+clients require manual verification.

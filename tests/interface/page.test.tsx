@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "../../src/app/page";
@@ -89,7 +89,9 @@ describe("Prophetic Night Segments interface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
 
     await screen.findByRole("heading", { name: "End of the calculated night" });
-    const schedule = screen.getByRole("list");
+    const schedule = within(
+      screen.getByRole("region", { name: "End of the calculated night" }),
+    ).getByRole("list");
     expect(schedule).toHaveTextContent("Buffer Wake-Up Time");
     expect(schedule).toHaveTextContent("First Adhan Reminder");
     expect(schedule).toHaveTextContent("2:45");
