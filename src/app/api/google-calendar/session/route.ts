@@ -4,7 +4,7 @@ import { errorResponse, privateResponse, readSession } from "@/lib/google-calend
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
-    const session = readSession(request);
+    const session = await readSession(request);
     return privateResponse({
       connected: true,
       configured: true,

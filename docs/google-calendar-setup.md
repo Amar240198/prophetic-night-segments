@@ -69,13 +69,14 @@ For a different local port, register that exact callback and update the local va
 ## 4. Configure your local app
 
 In the project folder, create or edit `.env.local`. Preserve any existing settings.
-Copy these four variable names from `.env.example` and fill them in:
+Copy these five variable names from `.env.example` and fill them in:
 
 ```dotenv
 GOOGLE_CLIENT_ID=your-web-application-client-id
 GOOGLE_CLIENT_SECRET=your-web-application-client-secret
 GOOGLE_OAUTH_REDIRECT_URI=http://localhost:3000/api/google-calendar/callback
 GOOGLE_SESSION_SECRET=your-generated-base64-secret
+DATABASE_URL=your-neon-postgresql-connection-string
 ```
 
 Generate the session encryption secret in your terminal:
@@ -122,11 +123,13 @@ only when enabled in the calculator. Events go into your **primary Google Calend
    | `GOOGLE_OAUTH_REDIRECT_URI` | `https://prophetic-night-segments.vercel.app/api/google-calendar/callback` |
    | `GOOGLE_SESSION_SECRET`     | A newly generated `openssl rand -base64 32` value, different from local.   |
 
-4. Treat the client secret and session secret as sensitive values. Do not publish
+4. Add `DATABASE_URL` using the Neon integration. Apply the migration as described below before deploying this persistence version.
+
+5. Treat the client secret and session secret as sensitive values. Do not publish
    them or add them to client-side variables.
-5. Open **Deployments**, select the latest production deployment, and choose
+6. Open **Deployments**, select the latest production deployment, and choose
    **Redeploy**. Environment changes take effect on a new deployment.
-6. Visit **https://prophetic-night-segments.vercel.app** and repeat the connection
+7. Visit **https://prophetic-night-segments.vercel.app** and repeat the connection
    and selected-event steps using a Google test user.
 
 Use the canonical production domain for OAuth. Random Vercel preview URLs will not
@@ -172,12 +175,12 @@ disconnect. They do not replace a live sign-in/import test with your own credent
 
 | Message or symptom                  | What to do                                                                                                                             |
 | ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
-| Connection is not configured        | Set all four environment variables and restart/redeploy.                                                                               |
+| Connection is not configured        | Set all five environment variables and restart/redeploy.                                                                               |
 | `redirect_uri_mismatch` from Google | Match the callback URI exactly in Google and the environment.                                                                          |
 | Access blocked in Testing           | Add the signing-in email under Google Auth Platform → Audience → Test users.                                                           |
 | Calendar permission was not granted | Reconnect and approve the Calendar permission. Confirm the Calendar API is enabled. Workspace admins may restrict access.              |
 | Google Calendar connection failed   | Retry sign-in. Check client ID/secret, callback URI, and session secret. Restart the flow if the popup has been open over ten minutes. |
-| Session has expired                 | Reconnect. This prototype deliberately does not retain refresh tokens.                                                                 |
+| Session has expired                 | Reconnect if the browser session expired or Google revoked access.                                                                     |
 | Unable to create calendar event     | Retry. Already-created events are detected; partial results are shown separately.                                                      |
 | Google Calendar is busy             | Wait, then retry. Google quota/rate-limit errors are not silently retried.                                                             |
 | Previously deleted event            | Restore it from Google Calendar's trash, or change its planned time. The app will not silently restore a deleted event.                |
@@ -192,15 +195,24 @@ disconnect. They do not replace a live sign-in/import test with your own credent
 - Sessions live in `HttpOnly`, `SameSite=Lax` cookies scoped to `/api/google-calendar`;
   cookies are `Secure` on HTTPS. Local HTTP is allowed only for localhost/127.0.0.1.
   Use HTTPS for deployed OAuth. Session responses use `Cache-Control: no-store`.
-- The encrypted cookie contains an access token and email. There is no user database,
-  no localStorage token, and no refresh token storage. Sessions expire after Google's
-  access-token lifetime, capped at one hour; users reconnect to continue. Rotating
-  the session secret invalidates all cookies. No background scheduling or sync runs.
-- Disconnect attempts Google token revocation and always clears local cookies. If
-  revocation fails, the UI says so; users can remove the app from their Google
-  Account's third-party connections. Stateless cookies cannot provide a centralized
-  per-session revocation list. A copied cookie remains usable until expiry if Google
-  revocation fails. A public long-lived service should use a server-side session store.
+- The browser session cookie contains only a random 256-bit opaque identifier. Postgres
+  stores its SHA-256 hash, never the cookie value. Browser sessions expire after 14 days.
+  The separate ten-minute OAuth cookie contains encrypted state/PKCE data only.
+- Access and optional refresh tokens are encrypted with AES-256-GCM before database
+  insertion. HKDF derives a separate database encryption key from `GOOGLE_SESSION_SECRET`;
+  authenticated data binds each token to its Google subject and access/refresh purpose.
+  Keep this secret stable and backed up securely: rotating it makes stored tokens
+  unreadable and requires reconnection. Ciphertexts carry a `v1` format prefix.
+- OAuth requests offline access with consent. Expired access tokens are refreshed on
+  demand while the browser session is valid. No background jobs run. If Google does
+  not provide a refresh token, the connection works only until access-token expiry;
+  a previously stored refresh token for the same Google subject is preserved.
+- Disconnect deletes the connection and every associated browser session before
+  attempting Google revocation. Existing calendar events remain. If revocation fails,
+  users can remove the app through Google Account settings. Database failure returns
+  a safe error instead of claiming successful disconnection.
+- Database records use absolute `timestamptz` expiries; prayer-time precision and DST
+  handling are unchanged. No preferences, event mappings, or automatic sync exist yet.
 - Mutations require the configured same-origin `Origin` header. Requests are capped
   at 64 KiB and nine unique allowed event types, with validated explicit timestamps,
   IANA timezone and a maximum 24-hour event span. Requests cannot supply attendees,
@@ -225,3 +237,46 @@ disconnect. They do not replace a live sign-in/import test with your own credent
 Implementation references: [Google web-server OAuth](https://developers.google.com/identity/protocols/oauth2/web-server),
 [PKCE/OAuth reference](https://developers.google.com/identity/openid-connect/reference),
 and [Calendar event insertion](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert).
+
+## Persistence migration and rollout
+
+This version requires `DATABASE_URL`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`,
+`GOOGLE_OAUTH_REDIRECT_URI`, and `GOOGLE_SESSION_SECRET`. There is no additional
+secret, ORM, or database administration API key. Use a separate development database;
+never test with production OAuth records.
+
+With the intended Neon `DATABASE_URL` securely loaded into your shell environment,
+run this **once**, from the repository root, using the PostgreSQL `psql` client:
+
+```sh
+PGDATABASE="$DATABASE_URL" psql -X --set=ON_ERROR_STOP=1 --file=migrations/001_google_calendar_persistence.sql
+```
+
+`PGDATABASE` accepts a PostgreSQL connection URI. This keeps credentials out of command
+arguments. Do not echo the URL or paste it into source code. Preserve Neon's TLS
+connection settings. The migration is transactional and deliberately fails if its
+existing tables are encountered; it is not run automatically during build or startup.
+It creates only `google_connections` and `browser_sessions` and their constraints/indexes.
+`google_subject` identifies the Google account even if its email changes. A single SQL
+statement atomically upserts that connection and creates the browser session.
+
+Apply the migration before deploying the persistence code. Existing credential cookies
+are intentionally rejected; users must reconnect once. The public session response still
+returns `connected`, `configured`, `email`, and `expiresAt`. With a refresh token,
+`expiresAt` now describes browser-session validity, rather than the current access token.
+
+Google Cloud needs no new Calendar scope for offline access; the application supplies
+`access_type=offline` and `prompt=select_account consent`. Existing users should reconnect
+and grant consent. External OAuth applications in Testing generally receive refresh
+tokens lasting seven days with Calendar scopes; production use needs the appropriate
+publishing/verification setup. Revoked tokens require reconnection.
+See [Google offline access](https://developers.google.com/identity/protocols/oauth2/web-server)
+and [refresh-token expiration](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+Operationally, restrict database access to trusted server environments, retain backups
+and the encryption secret securely, and set a retention policy for expired sessions and
+unused connections. Rate limiting remains required before broad public rollout. No
+production migration is applied by the test suite: it executes this SQL against an
+isolated in-memory PostgreSQL instance using the test-only PGlite dependency, with Google
+HTTP calls mocked. Live Neon transport and live Google consent still require deployment
+validation after an authorized rollout.

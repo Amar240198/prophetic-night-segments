@@ -19,7 +19,7 @@ export const maxDuration = 120;
 export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
-    const session = readSession(request);
+    const session = await readSession(request);
     const events = validateSelectedEvents(await readBoundedJson(request));
     const outcomes: EventOutcome[] = [];
     let stopCode: GoogleErrorCode | undefined;
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
         continue;
       }
       try {
-        if (session.expiresAt <= Date.now() + 10_000)
+        if (session.accessExpiresAt <= Date.now() + 10_000)
           throw new GoogleCalendarError("SESSION_EXPIRED", 401);
         outcomes.push({
           id: event.id,

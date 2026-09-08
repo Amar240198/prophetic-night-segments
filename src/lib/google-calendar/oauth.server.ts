@@ -1,7 +1,11 @@
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleCalendarError } from "./errors";
+import { persistConnection } from "./database.server";
+import { encryptToken } from "./tokens.server";
 import {
+  SESSION_MAX_AGE,
+  sessionHash,
   CALENDAR_SCOPE,
   EMAIL_SCOPE,
   FLOW_COOKIE,
@@ -37,7 +41,7 @@ export function startOAuth() {
     redirect_uri: config.redirectUri,
     response_type: "code",
     scope: `${CALENDAR_SCOPE} ${EMAIL_SCOPE}`,
-    access_type: "online",
+    access_type: "offline",
     prompt: "select_account consent",
     state: flow.state,
     code_challenge: createHash("sha256").update(flow.verifier).digest("base64url"),
@@ -95,6 +99,11 @@ export async function finishOAuth(request: NextRequest) {
       throw new GoogleCalendarError("PERMISSION_DENIED");
     if (
       typeof token.access_token !== "string" ||
+      !token.access_token ||
+      (token.refresh_token !== undefined &&
+        (typeof token.refresh_token !== "string" ||
+          !token.refresh_token ||
+          token.refresh_token.length > 4096)) ||
       token.access_token.length > 2048 ||
       token.token_type?.toLowerCase() !== "bearer" ||
       !Number.isFinite(token.expires_in) ||
@@ -108,23 +117,31 @@ export async function finishOAuth(request: NextRequest) {
     });
     if (!userResponse.ok) throw new GoogleCalendarError("CONNECTION_FAILED");
     const user = await userResponse.json();
-    if (typeof user.email !== "string" || user.email.length > 254 || user.verified_email !== true)
+    if (
+      typeof user.id !== "string" ||
+      !user.id ||
+      user.id.length > 255 ||
+      typeof user.email !== "string" ||
+      user.email.length > 254 ||
+      user.verified_email !== true
+    )
       throw new GoogleCalendarError("CONNECTION_FAILED");
     const seconds = Math.min(Math.floor(token.expires_in), 3600);
+    const opaqueId = randomBytes(32).toString("base64url");
+    await persistConnection({
+      connectionId: randomUUID(),
+      subject: user.id,
+      email: user.email,
+      accessToken: encryptToken(token.access_token, user.id, "access"),
+      refreshToken: token.refresh_token
+        ? encryptToken(token.refresh_token, user.id, "refresh")
+        : null,
+      accessExpiresAt: new Date(Date.now() + seconds * 1000).toISOString(),
+      sessionHash: sessionHash(opaqueId),
+      sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString(),
+    });
     response = completionRedirect(request, "connected");
-    setPrivateCookie(
-      response,
-      SESSION_COOKIE,
-      sealCookie(
-        {
-          accessToken: token.access_token,
-          email: user.email,
-          expiresAt: Date.now() + seconds * 1000,
-        },
-        SESSION_COOKIE,
-      ),
-      seconds,
-    );
+    setPrivateCookie(response, SESSION_COOKIE, opaqueId, SESSION_MAX_AGE);
   } catch (error) {
     response = completionRedirect(
       request,
