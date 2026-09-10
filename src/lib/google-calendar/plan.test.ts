@@ -30,7 +30,7 @@ describe("Google plan payloads", () => {
     expect(plan.find((event) => event.id === "part-5")!.start).toBe(result.lastThird.start);
     expect(result).toEqual(original);
   });
-  it("uses existing optional offsets and excludes disabled First Adhan", () => {
+  it("uses existing optional offsets and excludes disabled Wake before Fajr", () => {
     const result = calculateNightSegments({
       maghrib: "2026-12-31T18:00:00Z",
       fajr: "2027-01-01T06:00:00Z",

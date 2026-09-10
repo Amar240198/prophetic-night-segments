@@ -38,7 +38,7 @@ as `PRAYER_TIMES_UNAVAILABLE`; the server never substitutes another source or re
 old times. Provider availability and published coverage limit achievable sync results.
 
 Only selected event types are created. Wake buffers, Dāwūd versus last-third planning,
-Fajr preparation, and enabled First Adhan offsets are retained for every night. Boundary
+Fajr preparation, and enabled Wake before Fajr offsets are retained for every night. Boundary
 markers last one minute in Google; calculation boundaries retain engine precision.
 The general prayer-window and final-sixth selections are also available. Parts 4–5
 remain the Dāwūd prayer window and are never called the mathematical last third.

@@ -9,7 +9,7 @@ export const GOOGLE_EVENT_TITLES = {
   "dawud-prayer": "Dāwūd Pattern — Prayer Window",
   "part-6": "Qiyam — End Prayer / Beginning of Part 6",
   "fajr-preparation": "Prepare for Fajr",
-  "first-adhan-reminder": "First Adhan Reminder",
+  "first-adhan-reminder": "Wake before Fajr",
   fajr: "Fajr",
   "final-sixth": "Sixth of the Night — Final Sixth",
   prayer: "Qiyam — Prayer Window",

@@ -6,7 +6,7 @@ import type { NightCalculationInput, NightCalculationResult } from "@prophetic-n
 import type { SyncContext, SyncSource } from "@/lib/google-calendar/sync";
 import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
 import { CalendarCard } from "@/components/CalendarCard";
-import { NightEndTimeline, ScheduleTools } from "@/components/ScheduleTools";
+import { NightEndTimeline } from "@/components/ScheduleTools";
 import { useMemo, useState } from "react";
 
 type Activity = "Initial sleep" | "Prayer" | "Final sleep";
@@ -740,7 +740,7 @@ export default function Home() {
               </select>
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              First Adhan Reminder
+              Wake before Fajr
               <select
                 value={firstAdhanMinutes ?? ""}
                 onChange={(event) =>
@@ -1456,11 +1456,6 @@ export default function Home() {
                   syncContext={syncContext}
                   dawudSelected={timelineView === "dawud"}
                   prayerSource={providerInfo?.source ?? "Supplied prayer times"}
-                  firstAdhanMinutes={firstAdhanMinutes}
-                />
-                <ScheduleTools
-                  result={engineResult}
-                  input={submitted}
                   firstAdhanMinutes={firstAdhanMinutes}
                 />
               </>

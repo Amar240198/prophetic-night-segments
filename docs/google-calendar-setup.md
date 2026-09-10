@@ -110,7 +110,7 @@ for the connection; the popup also shows a message and can be closed manually.
 Click **Add Qiyam Plan to Calendar**, check the events you want, review their dates
 and offsets, then click **Add selected events**. All Google-specific checkboxes start
 unchecked. The custom wake event uses the existing wake-up buffer above. Fajr
-preparation uses the existing end-of-night preparation offset. First Adhan appears
+preparation uses the existing end-of-night preparation offset. Wake before Fajr appears
 only when enabled in the calculator. Events go into your **primary Google Calendar**.
 
 ## 5. Configure Vercel production
@@ -150,7 +150,7 @@ untrusted preview builds. See [Vercel environment variables](https://vercel.com/
 - Select the last third, Part 4, Part 5, Dāwūd prayer window, Part 6, preparation,
   and custom wake events as desired. Part 5 and the last third share a start boundary
   but are separate choices; selecting both intentionally creates both markers.
-- Enable First Adhan in the calculator and verify it appears with the existing offset.
+- Enable Wake before Fajr in the calculator and verify it appears with the existing offset.
 - Try a custom wake buffer that crosses midnight. Try manual dates spanning London's
   March or October DST transition and a half-hour zone such as `Asia/Kolkata`.
 - In Google Calendar, compare the instants using the same display timezone as the

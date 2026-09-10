@@ -63,7 +63,8 @@ describe("Prophetic Night Segments interface", () => {
     expect(screen.getByText("Middle Third")).toBeInTheDocument();
     expect(screen.getByText("Last Third")).toBeInTheDocument();
     expect(screen.queryByText("Part 1")).not.toBeInTheDocument();
-    expect(screen.getByText("Alarm planning")).toBeInTheDocument();
+    expect(screen.queryByText("Alarm planning")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Wake before Fajr")).toBeInTheDocument();
     expect(screen.queryByText("Developer output")).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Copy JSON" })).not.toBeInTheDocument();
   });
@@ -87,9 +88,9 @@ describe("Prophetic Night Segments interface", () => {
     expect(screen.getByText("Trusted timetable / manual input")).toBeInTheDocument();
   });
 
-  it("calculates the optional First Adhan Reminder from the following Fajr", async () => {
+  it("calculates the optional Wake before Fajr reminder from the following Fajr", async () => {
     render(<Home />);
-    fireEvent.change(screen.getByLabelText("First Adhan Reminder"), {
+    fireEvent.change(screen.getByLabelText("Wake before Fajr"), {
       target: { value: "30" },
     });
     fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
@@ -99,7 +100,7 @@ describe("Prophetic Night Segments interface", () => {
       screen.getByRole("region", { name: "End of the calculated night" }),
     ).getByRole("list");
     expect(schedule).toHaveTextContent("Buffer Wake-Up Time");
-    expect(schedule).toHaveTextContent("First Adhan Reminder");
+    expect(schedule).toHaveTextContent("Wake before Fajr");
     expect(schedule).toHaveTextContent("2:45");
     expect(schedule).toHaveTextContent("Buffer Before Fajr");
     expect(schedule).toHaveTextContent("Fajr");
