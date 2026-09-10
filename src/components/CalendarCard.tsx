@@ -1,6 +1,7 @@
 "use client";
 
 import type { SyncContext } from "@/lib/google-calendar/sync";
+import { Temporal } from "@js-temporal/polyfill";
 import { useState } from "react";
 import { GoogleCalendarSection } from "./GoogleCalendarSection";
 import { DEFAULT_BUFFER_BEFORE_FAJR_MINUTES } from "./ScheduleTools";
@@ -173,6 +174,10 @@ export function CalendarCard({
       )}
       <GoogleCalendarSection
         valid={valid}
+        localNight={Temporal.Instant.from(result.night.start)
+          .toZonedDateTimeISO(result.input.timeZone)
+          .toPlainDate()
+          .toString()}
         syncContext={syncContext}
         syncOptions={{
           wakeBufferMinutes: valid ? minutes : 0,

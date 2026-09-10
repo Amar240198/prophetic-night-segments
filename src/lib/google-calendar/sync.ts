@@ -11,6 +11,10 @@ export interface SyncPreference {
   mode: SyncMode;
   horizonDays: number;
 }
+export interface SyncSelection {
+  selected: GoogleEventId[];
+  revision: string | null;
+}
 export type SyncSource =
   | { kind: "london-unified" }
   | { kind: "aladhan"; options: Omit<FetchAlAdhanPrayerTimesOptions, "date" | "timeout"> }
@@ -32,6 +36,8 @@ export interface SyncOptions {
   firstAdhanMinutes: number | null;
 }
 export interface SyncRequest extends SyncContext {
+  /** Compare against the session's saved selection before changing it. */
+  selectionRevision?: string | null;
   /** Omitted mode preserves the original bounded fixed-horizon API. */
   mode?: SyncMode;
   nights: number;
@@ -45,6 +51,7 @@ export interface SyncOutcome {
   code?: GoogleErrorCode;
 }
 export interface SyncResult {
+  syncSelection?: SyncSelection;
   nights: number;
   syncedNights: number;
   outcomes: SyncOutcome[];

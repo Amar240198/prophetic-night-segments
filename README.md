@@ -132,3 +132,7 @@ clients require manual verification.
 ### Google Calendar forward sync
 
 The calendar card offers 30-, 60-, and 90-day horizons plus Continuous (an initial 90 nights with a persisted rolling preference) in one explicit server operation, with account-scoped event mappings, safe retries, partial results, and automatic post-OAuth UI recovery. Requires consolidated migration 002 after migration 001. See [calculation, API contract, limitations, and approved rollout steps](docs/google-calendar-sync.md). Continuous does not yet execute automatically; no cron or background worker is enabled.
+
+Separate removal controls remove checked app-owned events from this night or a confirmed
+30/60/90-night horizon. Horizon removal updates saved event selections and preserves failed
+mappings for retry. Unrelated events are never deletion targets. No additional migration is required.

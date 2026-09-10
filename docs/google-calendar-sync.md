@@ -190,3 +190,85 @@ files only to isolated in-memory PostgreSQL and mock all Google/provider network
 After approved migration and deployment, validate 30 → 60 → 90, repeat the same range to confirm skips,
 then verify that Continuous saves a distinct preference and shows no promise of automatic
 renewal. Confirm the visible OAuth connected state and disconnect removal of preferences.
+
+## Explicit event removal
+
+The checked event types now drive both addition and removal. **Remove selected events (X)**
+next to the one-night Add button removes only the displayed night: the server checks the
+existing one-night identity at the displayed times and, when a local night is supplied,
+that night's persistent mappings. A changed legacy one-night time has a different identity;
+select the original times to remove that older export. Manually saved links and ICS imports
+without our identity and private ownership markers are not removed.
+
+**Remove from synced horizon (30/60/90 nights)** is a separate action. Continuous uses its
+initial 90-night horizon. The confirmation states the starting date, number of nights,
+selected types, and maximum number of mapped events affected. Dates are inclusive and use
+calendar-date arithmetic, independent of current provider availability or changed prayer
+times. Horizon removal never searches the calendar for events: only account/date/type
+mappings in the requested range can identify deletion targets. Dates and types outside
+that range remain untouched, including unmapped one-night exports.
+
+For an existing event, removal verifies the exact event identity and private application,
+event-type, and (for mappings) local-night markers before sending an ETag-conditional
+DELETE. An ownership mismatch or ETag change is a failure, never permission to delete.
+A 404, 410, or cancelled tombstone is treated as already absent. Only a successful deletion
+or confirmed absence permits mapping removal. A network failure or failed mapping cleanup
+is reported as failure; retry reconciles the remaining mapping. Results distinguish
+removed, already absent, and failed/not-attempted identities without returning Google IDs.
+
+Google documents [conditional deletion with If-Match](https://developers.google.com/workspace/calendar/api/guides/version-resources)
+and [event deletion](https://developers.google.com/workspace/calendar/api/v3/reference/events/delete).
+
+Horizon removal first subtracts the checked types from the persisted `selected_event_types`
+under the account lease, including when some subsequent deletions fail. Remaining types,
+mode, horizon, and provider settings are retained. If no types remain, the preference row
+is deleted, disabling future replay eligibility; this avoids changing migration 002's
+nonempty-selection constraint. One-night removal deliberately leaves horizon preferences
+unchanged, so a subsequent explicit horizon sync can attempt that night's selected types.
+
+The session and successful sync/removal responses expose `syncSelection: { selected,
+revision }`. The revision is an opaque string, or null when no preference exists. The UI
+restores saved selections and unchecks horizon-removal targets even if a response is lost.
+A captured retry action retains the removal scope independently of those checkboxes.
+An explicit new checkbox selection is required to include a removed type again. Existing
+Google trash/tombstone behavior is preserved: stable identities are not rotated to bypass
+trash, and restoring a deleted event in Google may be necessary before adding that same
+identity again.
+
+Clients should send the last observed `selectionRevision` on sync and horizon removal.
+A mismatch returns `SELECTION_CHANGED` (409) before preferences or Google events change.
+Reload the session and review selections before retrying. This prevents a stale tab from
+silently undoing removal. The optional field is additive: legacy clients omitting it retain
+explicit-replacement semantics for their supplied selection; they should adopt revision
+checking before implementing saved-selection replay. No automatic renewal runs.
+
+`POST /api/google-calendar/remove` uses the same bounded JSON body, same-origin validation,
+HttpOnly session, and primary calendar as sync. Supported request bodies:
+
+```json
+{
+  "scope": "horizon",
+  "startDate": "2026-09-10",
+  "mode": "continuous",
+  "nights": 90,
+  "selected": ["final-sixth"],
+  "selectionRevision": null
+}
+```
+
+For one-night removal, send `scope: "night"`, `events` using the existing validated
+one-night event schema, and optional `startDate` identifying the displayed local night.
+Omitting `startDate` restricts removal to legacy one-night identities. Clients cannot
+supply Google event IDs, account IDs, arbitrary calendars, or provider URLs.
+
+Responses use the typed `RemovalResult` contract in `src/lib/google-calendar/removal.ts`.
+HTTP 200 may contain partial failures; inspect every outcome. The new safe errors are
+`REMOVE_FAILED`, `EVENT_NOT_OWNED`, `EVENT_CHANGED`, `REMOVE_INCOMPLETE`, and
+`SELECTION_CHANGED`. No credential or internal exception is returned.
+
+Removal, forward sync, and one-night insertion all share the existing account lease.
+Removal runs at most three targets concurrently, rechecks the session before each target,
+paces Google operations, and stops starting work on quota/authentication failures or the
+bounded deadline. Already-in-flight operations may finish. No new database migration,
+OAuth scope, cron, or background process is required. Production rollout still requires
+explicit authorization; implementation tests use isolated PostgreSQL and mocked Google calls.

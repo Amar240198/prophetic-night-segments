@@ -2,7 +2,13 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { GoogleCalendarError, type GoogleErrorCode } from "./errors";
 import { readSession, type GoogleSession } from "./session.server";
-import { acquireSyncLease, releaseSyncLease, saveSyncPreference } from "./sync-database.server";
+import {
+  acquireSyncLease,
+  releaseSyncLease,
+  saveSyncPreference,
+  assertSelectionRevision,
+  readSyncSelection,
+} from "./sync-database.server";
 import { calculateSyncNight, syncDates } from "./sync-plan.server";
 import { syncGoogleEvent } from "./sync-event.server";
 import type { SyncRequest, SyncOutcome, SyncResult } from "./sync";
@@ -67,6 +73,7 @@ export async function syncCalendar(
     return outcomes;
   }
   try {
+    await assertSelectionRevision(initial.connectionId, input.selectionRevision);
     // Save the user's intent before any external event writes, even if the run is partial.
     // The lease serializes competing preferences; disconnect cascades this row away.
     await saveSyncPreference(initial.connectionId, input);
@@ -84,7 +91,12 @@ export async function syncCalendar(
       (night) =>
         night.length === input.selected.length && night.every((item) => item.status !== "failed"),
     ).length;
-    return { nights: input.nights, syncedNights, outcomes };
+    return {
+      nights: input.nights,
+      syncedNights,
+      outcomes,
+      syncSelection: await readSyncSelection(initial.connectionId),
+    };
   } finally {
     // A failed release expires automatically; do not hide accurate event results.
     await releaseSyncLease(initial.connectionId, owner).catch(() => undefined);

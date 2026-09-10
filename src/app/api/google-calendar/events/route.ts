@@ -1,4 +1,6 @@
 import { NextRequest } from "next/server";
+import { randomUUID } from "node:crypto";
+import { acquireSyncLease, releaseSyncLease } from "@/lib/google-calendar/sync-database.server";
 import { GoogleCalendarError, type GoogleErrorCode } from "@/lib/google-calendar/errors";
 import {
   insertGoogleEvent,
@@ -17,10 +19,15 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 120;
 export async function POST(request: NextRequest) {
+  const owner = randomUUID();
+  let connection: string | undefined;
   try {
     assertSameOrigin(request);
     const session = await readSession(request);
     const events = validateSelectedEvents(await readBoundedJson(request));
+    if (!(await acquireSyncLease(session.connectionId, owner)))
+      throw new GoogleCalendarError("SYNC_IN_PROGRESS", 409);
+    connection = session.connectionId;
     const outcomes: EventOutcome[] = [];
     let stopCode: GoogleErrorCode | undefined;
     for (const event of events) {
@@ -47,5 +54,7 @@ export async function POST(request: NextRequest) {
     return response;
   } catch (error) {
     return errorResponse(error);
+  } finally {
+    if (connection) await releaseSyncLease(connection, owner).catch(() => undefined);
   }
 }

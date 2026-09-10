@@ -1,5 +1,61 @@
 import { database } from "./database.server";
-import type { SyncPreference, SyncRequest } from "./sync";
+import type { SyncPreference, SyncRequest, SyncSelection } from "./sync";
+import type { GoogleEventId } from "./plan";
+import { GoogleCalendarError } from "./errors";
+
+export async function readSyncSelection(connection: string): Promise<SyncSelection> {
+  const rows = await database()`SELECT selected_event_types, updated_at::text AS revision
+    FROM google_calendar_sync_preferences WHERE google_connection_id = ${connection}`;
+  return rows.length
+    ? {
+        selected: rows[0]!.selected_event_types as GoogleEventId[],
+        revision: rows[0]!.revision as string,
+      }
+    : { selected: [], revision: null };
+}
+
+export async function assertSelectionRevision(
+  connection: string,
+  revision: string | null | undefined,
+) {
+  if (revision !== undefined && (await readSyncSelection(connection)).revision !== revision)
+    throw new GoogleCalendarError("SELECTION_CHANGED", 409);
+}
+
+// Called under the same account lease as sync. An empty preference disables future replay.
+export async function removeSyncSelection(connection: string, selected: GoogleEventId[]) {
+  await database()`WITH remaining AS (
+    SELECT ARRAY(SELECT event_type FROM unnest(selected_event_types) AS event_type
+      WHERE NOT (event_type = ANY(${selected}::text[]))) AS types
+    FROM google_calendar_sync_preferences WHERE google_connection_id = ${connection}
+  ), cleared AS (
+    DELETE FROM google_calendar_sync_preferences WHERE google_connection_id = ${connection}
+      AND EXISTS (SELECT 1 FROM remaining WHERE cardinality(types) = 0)
+  )
+  UPDATE google_calendar_sync_preferences SET selected_event_types = remaining.types, updated_at = now()
+    FROM remaining WHERE google_connection_id = ${connection} AND cardinality(remaining.types) > 0`;
+  return readSyncSelection(connection);
+}
+
+export async function findEventMapping(
+  connection: string,
+  date: string,
+  type: GoogleEventId,
+): Promise<string | null> {
+  const rows = await database()`SELECT google_event_id FROM google_calendar_event_mappings
+    WHERE google_connection_id = ${connection} AND local_night = ${date}::date AND event_type = ${type}`;
+  return rows.length ? (rows[0]!.google_event_id as string) : null;
+}
+
+export async function removeEventMapping(
+  connection: string,
+  date: string,
+  type: GoogleEventId,
+  eventId: string,
+) {
+  await database()`DELETE FROM google_calendar_event_mappings WHERE google_connection_id = ${connection}
+    AND local_night = ${date}::date AND event_type = ${type} AND google_event_id = ${eventId}`;
+}
 
 export async function saveSyncPreference(connection: string, input: SyncRequest) {
   await database()`INSERT INTO google_calendar_sync_preferences

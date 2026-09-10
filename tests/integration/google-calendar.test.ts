@@ -75,7 +75,7 @@ const event = {
 };
 function request(path: string, options: { cookie?: string; body?: unknown; origin?: string } = {}) {
   return new NextRequest(`${origin}/api/google-calendar/${path}`, {
-    method: ["events", "disconnect", "sync"].includes(path) ? "POST" : "GET",
+    method: ["events", "disconnect", "sync", "remove"].includes(path) ? "POST" : "GET",
     headers: {
       origin: options.origin ?? origin,
       "Content-Type": "application/json",
@@ -973,5 +973,475 @@ describe("selectable and continuous sync horizons", () => {
     expect(
       validateSyncRequest({ ...syncInput, mode: "continuous", nights: undefined }).nights,
     ).toBe(90);
+  });
+});
+
+import { POST as remove } from "../../src/app/api/google-calendar/remove/route";
+import { removeCalendarEvents } from "../../src/lib/google-calendar/removal.server";
+import { googleEventPayload } from "../../src/lib/google-calendar/events.server";
+import { readSession } from "../../src/lib/google-calendar/session.server";
+import { syncGoogleEvent } from "../../src/lib/google-calendar/sync-event.server";
+import {
+  saveSyncPreference,
+  readSyncSelection,
+} from "../../src/lib/google-calendar/sync-database.server";
+import type { RemovalRequest, RemovalResult } from "../../src/lib/google-calendar/removal";
+
+function removalService(failAt = 0, failureStatus = 500, lostResponse = false) {
+  const service = calendarService();
+  const original = vi.mocked(fetch).getMockImplementation()!;
+  let deletes = 0;
+  vi.mocked(fetch).mockImplementation(async (url, init) => {
+    if (init?.method !== "DELETE") return original(url, init);
+    deletes++;
+    const target = new URL(String(url));
+    expect(target.hostname).toBe("www.googleapis.com");
+    expect(target.searchParams.get("sendUpdates")).toBe("none");
+    expect((init.headers as Record<string, string>)["If-Match"]).toBe('"v1"');
+    if (deletes === failAt && !lostResponse) return json({}, failureStatus);
+    const id = target.pathname.split("/").at(-1)!;
+    service.stored.delete(id);
+    if (deletes === failAt && lostResponse) throw new TypeError("Lost delete response");
+    return new Response(null, { status: 204 });
+  });
+  return { ...service, deletes: () => deletes };
+}
+async function removeRequest(body: RemovalRequest, cookie: string): Promise<RemovalResult> {
+  const response = await remove(request("remove", { body, cookie }));
+  expect(response.status).toBe(200);
+  return response.json();
+}
+async function seedSync(input: SyncRequest, cookie: string) {
+  const active = await readSession(request("session", { cookie }));
+  await saveSyncPreference(active.connectionId, input);
+  for (const date of syncDates(input.startDate, input.nights)) {
+    for (const item of await calculateSyncNight(input, date))
+      await syncGoogleEvent(active, date, item);
+  }
+  return active;
+}
+const horizonRemoval = (nights = 30, mode: "fixed" | "continuous" = "fixed"): RemovalRequest => ({
+  scope: "horizon",
+  startDate: "2026-03-01",
+  nights,
+  mode,
+  selected: ["final-sixth"],
+});
+
+describe("safe Google Calendar removal", () => {
+  it("removes only the selected app-owned one-night event and repeats safely", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const added = await events(request("events", { cookie, body: { events: [event] } }));
+    expect(added.status).toBe(200);
+    const other = { ...event, id: "fajr" };
+    await events(request("events", { cookie, body: { events: [other] } }));
+    const input: RemovalRequest = { scope: "night", events: [event] };
+    expect((await removeRequest(input, cookie)).outcomes).toEqual([
+      { id: "last-third", identity: "one-night", status: "removed" },
+    ]);
+    expect(service.deletes()).toBe(1);
+    expect(service.stored.has(googleEventPayload(other).id)).toBe(true);
+    expect((await removeRequest(input, cookie)).outcomes[0]!.status).toBe("absent");
+    expect(service.deletes()).toBe(1);
+  });
+
+  it.each([404, 410, "cancelled"] as const)(
+    "treats an already-deleted one-night event (%s) as absent",
+    async (status) => {
+      const cookie = await sessionCookie();
+      vi.mocked(fetch).mockResolvedValue(
+        status === "cancelled" ? json({ status }) : json({}, status),
+      );
+      expect(
+        (await removeRequest({ scope: "night", events: [event] }, cookie)).outcomes[0]!.status,
+      ).toBe("absent");
+      expect(vi.mocked(fetch).mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
+    },
+  );
+
+  it.each(["application", "planEvent", "id", "etag"])(
+    "refuses one-night deletion with invalid %s",
+    async (field) => {
+      const cookie = await sessionCookie();
+      const payload = { ...googleEventPayload(event), status: "confirmed", etag: '"v1"' };
+      if (field === "application" || field === "planEvent")
+        payload.extendedProperties.private[field] = "foreign";
+      else if (field === "id") payload.id = "foreign";
+      else payload.etag = "";
+      vi.mocked(fetch).mockResolvedValue(json(payload));
+      const result = await removeRequest({ scope: "night", events: [event] }, cookie);
+      expect(result.outcomes[0]!.status).toBe("failed");
+      expect(vi.mocked(fetch).mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
+    },
+  );
+
+  it.each([
+    [30, "fixed"],
+    [60, "fixed"],
+    [90, "fixed"],
+    [90, "continuous"],
+  ] as const)(
+    "removes one selected type across %i %s nights and preserves other types/dates",
+    async (nights, mode) => {
+      const service = removalService();
+      const cookie = await sessionCookie();
+      const input: SyncRequest = {
+        ...syncInput,
+        startDate: "2026-03-01",
+        mode,
+        nights,
+        selected: ["fajr", "final-sixth", "prayer"],
+      };
+      const active = await seedSync(input, cookie);
+      // A matching type outside the chosen horizon and an unmapped event must survive.
+      const outside = syncDates(input.startDate, nights + 1).at(-1)!;
+      const [outsideEvent] = await calculateSyncNight(
+        { ...input, selected: ["final-sixth"] },
+        outside,
+      );
+      await syncGoogleEvent(active, outside, outsideEvent!);
+      const foreignId = "a".repeat(64);
+      const foreign = {
+        ...service.stored.values().next().value!,
+        extendedProperties: { private: { localNight: input.startDate, planEvent: "final-sixth" } },
+      };
+      service.stored.set(foreignId, foreign);
+      const result = await removeRequest(horizonRemoval(nights, mode), cookie);
+      expect(result.outcomes).toHaveLength(nights);
+      expect(
+        result.outcomes.every((item) => item.id === "final-sixth" && item.status === "removed"),
+      ).toBe(true);
+      expect(service.deletes()).toBe(nights);
+      expect(service.stored.size).toBe(nights * 2 + 2);
+      expect(service.stored.has(foreignId)).toBe(true);
+      expect((await readSyncSelection(active.connectionId)).selected).toEqual(["fajr", "prayer"]);
+      expect(await readSyncPreference(active.connectionId)).toEqual({ mode, horizonDays: nights });
+      expect(
+        (
+          await db.query(
+            "SELECT event_type, count(*)::int AS count FROM google_calendar_event_mappings GROUP BY event_type ORDER BY event_type",
+          )
+        ).rows,
+      ).toEqual([
+        { event_type: "fajr", count: nights },
+        { event_type: "final-sixth", count: 1 },
+        { event_type: "prayer", count: nights },
+      ]);
+      const repeated = await removeRequest(horizonRemoval(nights, mode), cookie);
+      expect(repeated.outcomes.every((item) => item.status === "absent")).toBe(true);
+      expect(service.deletes()).toBe(nights);
+    },
+    30_000,
+  );
+
+  it("restores saved choices for the next sync and rejects a stale tab that would recreate a removed type", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const input: SyncRequest = {
+      ...syncInput,
+      startDate: "2026-03-01",
+      mode: "continuous",
+      nights: 90,
+      selected: ["fajr", "final-sixth"],
+    };
+    const active = await seedSync({ ...input, nights: 1, mode: "fixed" }, cookie);
+    const before = await readSyncSelection(active.connectionId);
+    await removeRequest(horizonRemoval(90, "continuous"), cookie);
+    const calls = vi.mocked(fetch).mock.calls.length;
+    const stale = await sync(
+      request("sync", { cookie, body: { ...input, selectionRevision: before.revision } }),
+    );
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).error.code).toBe("SELECTION_CHANGED");
+    expect(vi.mocked(fetch).mock.calls.length).toBe(calls);
+    const saved = (await (await session(request("session", { cookie }))).json()).syncSelection;
+    expect(saved.selected).toEqual(["fajr"]);
+    // Replay the persisted selection through the existing sync path.
+    const next = await runSync(
+      {
+        ...input,
+        nights: 1,
+        mode: undefined,
+        selected: saved.selected,
+        selectionRevision: saved.revision,
+      },
+      cookie,
+    );
+    expect(next.outcomes).toHaveLength(1);
+    expect(next.outcomes[0]).toMatchObject({ id: "fajr", status: "existing" });
+    expect(service.stored.size).toBe(1);
+    // A fresh explicit selection can add that type on a new date with the same identity scheme.
+    const choice = await readSyncSelection(active.connectionId);
+    const explicit = await runSync(
+      {
+        ...input,
+        startDate: "2026-03-02",
+        nights: 1,
+        mode: undefined,
+        selectionRevision: choice.revision,
+      },
+      cookie,
+    );
+    expect(explicit.outcomes.every((item: { status: string }) => item.status === "created")).toBe(
+      true,
+    );
+  });
+
+  it("clears the preference when its last type is removed without a schema change", async () => {
+    removalService();
+    const cookie = await sessionCookie();
+    const active = await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["final-sixth"] },
+      cookie,
+    );
+    const result = await removeRequest(horizonRemoval(), cookie);
+    expect(result.syncSelection).toEqual({ selected: [], revision: null });
+    expect(await readSyncPreference(active.connectionId)).toBeNull();
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+    ).toEqual([{ count: 0 }]);
+  });
+
+  it.each([500, 412])(
+    "preserves failed mappings on Google %i and retries without touching successful deletions",
+    async (status) => {
+      const service = removalService(2, status);
+      const cookie = await sessionCookie();
+      const active = await seedSync(
+        { ...syncInput, startDate: "2026-03-01", nights: 3, selected: ["final-sixth", "fajr"] },
+        cookie,
+      );
+      const result = await removeRequest(horizonRemoval(), cookie);
+      expect(result.outcomes.filter((item) => item.status === "failed")).toHaveLength(1);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE event_type = 'final-sixth'",
+          )
+        ).rows,
+      ).toEqual([{ count: 1 }]);
+      expect((await readSyncSelection(active.connectionId)).selected).toEqual(["fajr"]);
+      expect(
+        (await removeRequest(horizonRemoval(), cookie)).outcomes.every(
+          (item) => item.status !== "failed",
+        ),
+      ).toBe(true);
+      expect(service.deletes()).toBe(4);
+      expect(service.stored.size).toBe(3);
+    },
+  );
+
+  it("recovers a lost Google deletion response before removing its mapping", async () => {
+    const service = removalService(1, 500, true);
+    const cookie = await sessionCookie();
+    await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["final-sixth"] },
+      cookie,
+    );
+    expect((await removeRequest(horizonRemoval(), cookie)).outcomes[0]!.status).toBe("failed");
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+    ).toEqual([{ count: 1 }]);
+    expect(
+      (await removeRequest(horizonRemoval(), cookie)).outcomes.every(
+        (item) => item.status === "absent",
+      ),
+    ).toBe(true);
+    expect(service.deletes()).toBe(1);
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+    ).toEqual([{ count: 0 }]);
+  });
+
+  it("refuses a mapped event whose ownership metadata changed and preserves the mapping", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["final-sixth"] },
+      cookie,
+    );
+    service.stored.values().next().value!.extendedProperties.private.localNight = "2026-03-02";
+    expect((await removeRequest(horizonRemoval(), cookie)).outcomes[0]).toMatchObject({
+      status: "failed",
+      code: "EVENT_NOT_OWNED",
+    });
+    expect(service.deletes()).toBe(0);
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+    ).toEqual([{ count: 1 }]);
+  });
+
+  it("removes the displayed night's mapped identity even after planning times changed, without changing horizon preferences", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 2, selected: ["last-third"] },
+      cookie,
+    );
+    const input: RemovalRequest = { scope: "night", startDate: "2026-03-01", events: [event] };
+    const result = await removeRequest(input, cookie);
+    expect(result.outcomes.map((item) => item.status)).toEqual(["absent", "removed"]);
+    expect(service.stored.size).toBe(1);
+    expect((await readSyncSelection(active.connectionId)).selected).toEqual(["last-third"]);
+  });
+
+  it("rejects forged origins, unauthenticated requests, arbitrary horizons and unselected types", async () => {
+    const cookie = await sessionCookie();
+    expect(
+      (
+        await remove(
+          request("remove", { cookie, origin: "https://attacker.example", body: horizonRemoval() }),
+        )
+      ).status,
+    ).toBe(403);
+    expect((await remove(request("remove", { body: horizonRemoval() }))).status).toBe(401);
+    for (const change of [
+      { nights: 31 },
+      { nights: "90" },
+      { mode: "continuous", nights: 30 },
+      { startDate: "2026-02-30" },
+      { selected: [] },
+      { selected: ["fajr", "fajr"] },
+      { selected: ["foreign"] },
+      { scope: "all" },
+      { selectionRevision: 123 },
+    ]) {
+      expect(
+        (await remove(request("remove", { cookie, body: { ...horizonRemoval(), ...change } })))
+          .status,
+      ).toBe(400);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("shares the account lease with sync and one-night additions", async () => {
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const owner = randomUUID();
+    await acquireSyncLease(active.connectionId, owner);
+    expect((await remove(request("remove", { cookie, body: horizonRemoval() }))).status).toBe(409);
+    expect((await events(request("events", { cookie, body: { events: [event] } }))).status).toBe(
+      409,
+    );
+    expect(fetch).not.toHaveBeenCalled();
+    await releaseSyncLease(active.connectionId, owner);
+  });
+
+  it("stops starting deletions after quota failure and keeps remaining mappings", async () => {
+    const service = removalService(1, 429);
+    const cookie = await sessionCookie();
+    await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 6, selected: ["final-sixth"] },
+      cookie,
+    );
+    const result = await removeRequest(horizonRemoval(), cookie);
+    expect(service.deletes()).toBeLessThanOrEqual(3);
+    expect(result.outcomes.some((item) => item.code === "RATE_LIMITED")).toBe(true);
+    const remaining = (
+      await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")
+    ).rows[0]!.count;
+    expect(remaining).toBe(service.stored.size);
+    expect(remaining).toBeGreaterThanOrEqual(4);
+  });
+});
+
+describe("removal persistence failures", () => {
+  it("does not call Google when saving removal intent fails", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["fajr", "final-sixth"] },
+      cookie,
+    );
+    const before = await readSyncSelection(active.connectionId);
+    await db.exec(`CREATE FUNCTION reject_test_preference_update() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$;
+      CREATE TRIGGER reject_test_preference_update BEFORE UPDATE ON google_calendar_sync_preferences FOR EACH ROW EXECUTE FUNCTION reject_test_preference_update();`);
+    try {
+      const calls = vi.mocked(fetch).mock.calls.length;
+      const response = await remove(request("remove", { cookie, body: horizonRemoval() }));
+      expect(response.status).toBeGreaterThanOrEqual(400);
+      expect(JSON.stringify(await response.json())).not.toContain("test failure");
+      expect(vi.mocked(fetch).mock.calls.length).toBe(calls);
+      expect(service.deletes()).toBe(0);
+      expect(await readSyncSelection(active.connectionId)).toEqual(before);
+    } finally {
+      await db.exec(
+        "DROP TRIGGER reject_test_preference_update ON google_calendar_sync_preferences; DROP FUNCTION reject_test_preference_update();",
+      );
+    }
+  });
+
+  it("reports mapping cleanup failure and reconciles absence on retry", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["final-sixth"] },
+      cookie,
+    );
+    await db.exec(`CREATE FUNCTION reject_test_mapping_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$;
+      CREATE TRIGGER reject_test_mapping_delete BEFORE DELETE ON google_calendar_event_mappings FOR EACH ROW EXECUTE FUNCTION reject_test_mapping_delete();`);
+    try {
+      const result = await removeRequest(horizonRemoval(), cookie);
+      expect(result.outcomes[0]).toMatchObject({ status: "failed", code: "REMOVE_FAILED" });
+      expect(service.stored.size).toBe(0);
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      ).toEqual([{ count: 1 }]);
+    } finally {
+      await db.exec(
+        "DROP TRIGGER reject_test_mapping_delete ON google_calendar_event_mappings; DROP FUNCTION reject_test_mapping_delete();",
+      );
+    }
+    expect(
+      (await removeRequest(horizonRemoval(), cookie)).outcomes.every(
+        (item) => item.status === "absent",
+      ),
+    ).toBe(true);
+    expect(service.deletes()).toBe(1);
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+    ).toEqual([{ count: 0 }]);
+  });
+});
+
+describe("removal absence and deadline handling", () => {
+  it.each([404, 410])(
+    "cleans a mapping when Google confirms absence during DELETE (%i)",
+    async (status) => {
+      const service = removalService(1, status);
+      const cookie = await sessionCookie();
+      await seedSync(
+        { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["final-sixth"] },
+        cookie,
+      );
+      const result = await removeRequest(horizonRemoval(), cookie);
+      expect(result.outcomes[0]!.status).toBe("absent");
+      expect(service.deletes()).toBe(1);
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      ).toEqual([{ count: 0 }]);
+    },
+  );
+
+  it("preserves mappings when the removal deadline prevents starting Google work", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    await seedSync(
+      { ...syncInput, startDate: "2026-03-01", nights: 1, selected: ["final-sixth"] },
+      cookie,
+    );
+    const now = Date.now();
+    const clock = vi
+      .fn()
+      .mockReturnValueOnce(now)
+      .mockReturnValue(now + 260_000);
+    const req = request("remove", { cookie });
+    const result = await removeCalendarEvents(horizonRemoval(), req, await readSession(req), clock);
+    expect(result.outcomes.every((item) => item.code === "REMOVE_INCOMPLETE")).toBe(true);
+    expect(service.deletes()).toBe(0);
+    expect(
+      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+    ).toEqual([{ count: 1 }]);
   });
 });

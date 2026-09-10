@@ -12,9 +12,11 @@ import {
   type SyncContext,
   type SyncOptions,
   type SyncResult,
+  type SyncSelection,
 } from "@/lib/google-calendar/sync";
 import type { GoogleEventId } from "@/lib/google-calendar/plan";
 import type { EventOutcome } from "@/lib/google-calendar/events.server";
+import type { RemovalRequest, RemovalResult } from "@/lib/google-calendar/removal";
 
 interface Connection {
   connected: boolean;
@@ -22,6 +24,7 @@ interface Connection {
   email?: string;
   expiresAt?: number;
   syncPreference?: SyncPreference | null;
+  syncSelection?: SyncSelection;
 }
 const buttonClass =
   "border border-[#d0ae67] px-4 py-2 text-sm font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10 disabled:opacity-40";
@@ -30,11 +33,13 @@ export function GoogleCalendarSection({
   valid,
   syncContext,
   syncOptions,
+  localNight,
 }: {
   events: CalendarEvent[];
   valid: boolean;
   syncContext?: SyncContext | null;
   syncOptions?: SyncOptions;
+  localNight?: string;
 }) {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -49,6 +54,10 @@ export function GoogleCalendarSection({
   } | null>(null);
   const [syncReport, setSyncReport] = useState<SyncResult | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [removalReport, setRemovalReport] = useState<RemovalResult | null>(null);
+  const [retryRemoval, setRetryRemoval] = useState<RemovalRequest | null>(null);
+  const selectionRevision = useRef<string | null | undefined>(undefined);
+  const selectionEpoch = useRef(0);
   const [horizon, setHorizon] = useState<number | "continuous">(DEFAULT_SYNC_NIGHTS);
   const horizonEdited = useRef(false);
   const syncNights = horizon === "continuous" ? CONTINUOUS_SYNC_NIGHTS : horizon;
@@ -56,10 +65,21 @@ export function GoogleCalendarSection({
   const popup = useRef<Window | null>(null);
   const inFlight = useRef(false);
   const selectedEvents = events.filter((event) => selected.includes(event.id));
+  const acceptSelection = useCallback((selection?: SyncSelection) => {
+    if (
+      !selection ||
+      !Array.isArray(selection.selected) ||
+      !(selection.revision === null || typeof selection.revision === "string")
+    )
+      return;
+    if (selectionRevision.current !== selection.revision) setSelected(selection.selected);
+    selectionRevision.current = selection.revision;
+  }, []);
 
   const checkConnection = useCallback((): Promise<boolean> => {
     // Serialize checks so a pre-callback response cannot overwrite a newer connected response.
     if (checking.current) return checking.current;
+    const epoch = selectionEpoch.current;
     const pending = fetch("/api/google-calendar/session", {
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
@@ -75,7 +95,9 @@ export function GoogleCalendarSection({
         }
         if (typeof body.connected !== "boolean" || typeof body.configured !== "boolean")
           throw new Error();
+        if (epoch !== selectionEpoch.current || inFlight.current) return body.connected;
         setConnection(body);
+        acceptSelection(body.syncSelection);
         if (!horizonEdited.current && body.syncPreference) {
           if (body.syncPreference.mode === "continuous") setHorizon("continuous");
           else if (
@@ -101,7 +123,7 @@ export function GoogleCalendarSection({
       });
     checking.current = pending;
     return pending;
-  }, []);
+  }, [acceptSelection]);
 
   useEffect(() => {
     void checkConnection();
@@ -213,6 +235,11 @@ export function GoogleCalendarSection({
       setConnection({ connected: false, configured: true });
       setReport(null);
       setSyncReport(null);
+      setRemovalReport(null);
+      setRetryRemoval(null);
+      setSelected([]);
+      selectionRevision.current = undefined;
+      selectionEpoch.current++;
       setHorizon(DEFAULT_SYNC_NIGHTS);
       horizonEdited.current = false;
       setReviewing(false);
@@ -235,6 +262,8 @@ export function GoogleCalendarSection({
     setError("");
     setMessage("");
     setReport(null);
+    setRemovalReport(null);
+    setRetryRemoval(null);
     const submittedEvents = selectedEvents;
     try {
       const response = await fetch("/api/google-calendar/events", {
@@ -272,12 +301,15 @@ export function GoogleCalendarSection({
     if (inFlight.current || !valid || !selectedEvents.length || !syncContext || !syncOptions)
       return;
     inFlight.current = true;
+    selectionEpoch.current++;
     setBusy(true);
     setSyncing(true);
     setError("");
     setMessage(`Adding ${syncNights} nights…`);
     setReport(null);
     setSyncReport(null);
+    setRemovalReport(null);
+    setRetryRemoval(null);
     try {
       const response = await fetch("/api/google-calendar/sync", {
         method: "POST",
@@ -289,6 +321,7 @@ export function GoogleCalendarSection({
           mode: horizon === "continuous" ? "continuous" : "fixed",
           options: syncOptions,
           selected: selectedEvents.map((event) => event.id as GoogleEventId),
+          selectionRevision: selectionRevision.current,
         }),
       });
       const body = await response.json();
@@ -307,6 +340,7 @@ export function GoogleCalendarSection({
       )
         throw new Error();
       setSyncReport(body);
+      acceptSelection(body.syncSelection);
       const failed = body.outcomes.filter(
         (item: { status: string }) => item.status === "failed",
       ).length;
@@ -328,6 +362,92 @@ export function GoogleCalendarSection({
       inFlight.current = false;
       setBusy(false);
       setSyncing(false);
+      selectionEpoch.current++;
+    }
+  }
+  async function remove(input: RemovalRequest) {
+    if (inFlight.current) return;
+    if (
+      input.scope === "horizon" &&
+      !window.confirm(
+        `Remove from synced horizon: ${input.nights} nights starting ${input.startDate}. Up to ${input.nights * input.selected.length} app-owned events may be removed (${input.selected.map((id) => events.find((event) => event.id === id)?.title ?? id).join(", ")}). These types will also be removed from your saved sync selection, including if deletion partially fails. Other event types remain. Continue?`,
+      )
+    )
+      return;
+    inFlight.current = true;
+    selectionEpoch.current++;
+    setBusy(true);
+    setError("");
+    setMessage("Removing selected app-owned events…");
+    setReport(null);
+    setSyncReport(null);
+    setRemovalReport(null);
+    setRetryRemoval(null);
+    // Uncheck removal targets immediately, including if the network response is lost.
+    if (input.scope === "horizon")
+      setSelected((current) =>
+        current.filter((id) => !input.selected.includes(id as GoogleEventId)),
+      );
+    try {
+      const response = await fetch("/api/google-calendar/remove", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(310_000),
+        body: JSON.stringify(input),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setMessage("");
+        setError(
+          GOOGLE_MESSAGES[body.error?.code as GoogleErrorCode] ?? GOOGLE_MESSAGES.REMOVE_FAILED,
+        );
+        setRetryRemoval(input);
+        return;
+      }
+      const expected =
+        input.scope === "horizon"
+          ? input.nights * input.selected.length
+          : input.events.length * (input.startDate ? 2 : 1);
+      if (
+        body.scope !== input.scope ||
+        !Array.isArray(body.outcomes) ||
+        body.outcomes.length !== expected ||
+        body.outcomes.some(
+          (item: { status: string }) => !["removed", "absent", "failed"].includes(item.status),
+        )
+      )
+        throw new Error();
+      const result = body as RemovalResult;
+      acceptSelection(result.syncSelection);
+      setRemovalReport(result);
+      const failed = result.outcomes.filter((item) => item.status === "failed").length;
+      const removed = result.outcomes.filter((item) => item.status === "removed").length;
+      const absent = result.outcomes.filter((item) => item.status === "absent").length;
+      setMessage(
+        `${removed} events removed; ${absent} already absent. ${failed} failed or were not attempted.`,
+      );
+      if (failed) {
+        setError(
+          input.scope === "horizon"
+            ? "Some events were not removed. Their mappings were preserved. Retry removal below; saved sync selections already exclude the removed types."
+            : "Some events were not removed. Any failed mappings were preserved. Retry removal below; saved horizon selections are unchanged.",
+        );
+        setRetryRemoval(
+          input.scope === "horizon"
+            ? { ...input, selectionRevision: result.syncSelection?.revision }
+            : input,
+        );
+      }
+    } catch {
+      setMessage("");
+      setError(
+        "Removal could not be confirmed. Some events may already be removed. Check connection to reload saved selections, then retry removal safely.",
+      );
+      setRetryRemoval(input);
+    } finally {
+      inFlight.current = false;
+      selectionEpoch.current++;
+      setBusy(false);
     }
   }
   return (
@@ -376,7 +496,7 @@ export function GoogleCalendarSection({
                 planning only.
               </p>
               <fieldset disabled={busy} className="mt-4 grid gap-2">
-                <legend className="mb-2 text-sm">Google Calendar events to add</legend>
+                <legend className="mb-2 text-sm">Google Calendar events to add or remove</legend>
                 {events.map((event) => (
                   <label
                     key={event.id}
@@ -406,14 +526,32 @@ export function GoogleCalendarSection({
                   </label>
                 ))}
               </fieldset>
-              <button
-                type="button"
-                className={`${buttonClass} mt-4`}
-                disabled={busy || !valid || !selectedEvents.length}
-                onClick={() => void submit()}
-              >
-                {busy ? "Working…" : `Add selected events (${selectedEvents.length})`}
-              </button>
+              <p className="mt-4 text-sm" id="one-night-removal-scope">
+                Add or remove from this night only{localNight ? ` (${localNight})` : ""}. Removal
+                checks app-owned one-night events at the displayed times and mapped events for this
+                night. Saved horizon selections are unchanged.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  className={`${buttonClass} mt-4`}
+                  disabled={busy || !valid || !selectedEvents.length}
+                  onClick={() => void submit()}
+                >
+                  {busy ? "Working…" : `Add selected events (${selectedEvents.length})`}
+                </button>
+                <button
+                  type="button"
+                  className={`${buttonClass} mt-4`}
+                  aria-describedby="one-night-removal-scope"
+                  disabled={busy || !valid || !selectedEvents.length}
+                  onClick={() =>
+                    void remove({ scope: "night", events: selectedEvents, startDate: localNight })
+                  }
+                >
+                  Remove selected events ({selectedEvents.length})
+                </button>
+              </div>
               {syncContext && syncOptions ? (
                 <div className="mt-5 border-t border-white/10 pt-4">
                   <fieldset disabled={busy} className="mb-4">
@@ -458,6 +596,30 @@ export function GoogleCalendarSection({
                     {syncing
                       ? `Adding ${syncNights} nights…`
                       : `Sync ${syncNights} nights to Google Calendar`}
+                  </button>
+                  <p id="horizon-removal-scope" className="mt-4 text-sm">
+                    Remove from synced horizon: {syncNights} nights starting {syncContext.startDate}
+                    . Only mapped app-owned events of the checked types are removed. Those types are
+                    also removed from your saved sync selection; select them again explicitly to add
+                    them in a future sync.
+                  </p>
+                  <button
+                    type="button"
+                    className={`${buttonClass} mt-3`}
+                    aria-describedby="horizon-removal-scope"
+                    disabled={busy || !selectedEvents.length}
+                    onClick={() =>
+                      void remove({
+                        scope: "horizon",
+                        startDate: syncContext.startDate,
+                        nights: syncNights,
+                        mode: horizon === "continuous" ? "continuous" : "fixed",
+                        selected: selectedEvents.map((event) => event.id as GoogleEventId),
+                        selectionRevision: selectionRevision.current,
+                      })
+                    }
+                  >
+                    Remove from synced horizon ({syncNights} nights)
                   </button>
                 </div>
               ) : (
@@ -507,6 +669,49 @@ export function GoogleCalendarSection({
         <p role="alert" className="mt-3 text-sm text-red-300">
           {error}
         </p>
+      )}
+      {connection?.connected && error && (
+        <button
+          type="button"
+          className={`${buttonClass} mt-3`}
+          disabled={busy}
+          onClick={() => void checkConnection()}
+        >
+          Check connection
+        </button>
+      )}
+      {removalReport && (
+        <ul aria-label="Google Calendar removal results" className="mt-3 space-y-2 text-sm">
+          {removalReport.outcomes.map((item) => (
+            <li key={`${item.identity}-${item.date ?? "night"}-${item.id}`}>
+              {item.date ?? "This night"} —{" "}
+              {events.find((event) => event.id === item.id)?.title ?? item.id} (
+              {item.identity === "mapped" ? "synced event" : "one-night event"}):{" "}
+              {item.status === "removed"
+                ? "Removed"
+                : item.status === "absent"
+                  ? "Already absent"
+                  : GOOGLE_MESSAGES[item.code ?? "REMOVE_FAILED"]}
+            </li>
+          ))}
+        </ul>
+      )}
+      {retryRemoval && (
+        <button
+          type="button"
+          className={`${buttonClass} mt-3`}
+          disabled={busy}
+          onClick={() =>
+            void remove(
+              retryRemoval.scope === "horizon"
+                ? { ...retryRemoval, selectionRevision: selectionRevision.current }
+                : retryRemoval,
+            )
+          }
+        >
+          Retry removal (
+          {retryRemoval.scope === "horizon" ? `${retryRemoval.nights} nights` : "this night"})
+        </button>
       )}
       {syncReport && (
         <details className="mt-4" open={syncReport.syncedNights !== syncReport.nights}>

@@ -38,7 +38,8 @@ For persistent multi-night sync, see [selectable horizons and migration 002](goo
    app-created secondary calendar instead. Although Google grants read/change/delete
    permissions in the chosen scope, this implementation inserts events, reads matching identifiers to verify retries,
    and updates app-owned forward-sync events when their calculated schedule changes.
-   It never edits unrelated events.
+   Explicit removal can delete only verified app-owned identities, with separate one-night
+   and confirmed horizon scopes. It never edits or deletes unrelated events.
 
 6. For public use beyond your test users, complete Google's publishing/verification
    requirements. Supply a real homepage, support details, privacy policy, and any

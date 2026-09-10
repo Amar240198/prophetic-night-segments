@@ -1,4 +1,11 @@
 export const GOOGLE_MESSAGES = {
+  REMOVE_FAILED: "Unable to remove this calendar event. Retry removal safely.",
+  EVENT_NOT_OWNED: "This event could not be verified as app-owned and was not removed.",
+  EVENT_CHANGED: "This event changed during removal and was not removed. Review it and retry.",
+  REMOVE_INCOMPLETE:
+    "Removal reached its time limit. Retry to finish; remaining mappings were preserved.",
+  SELECTION_CHANGED:
+    "Saved calendar selections changed in another request. Check connection to reload them, then review your choices.",
   PRAYER_TIMES_UNAVAILABLE:
     "Prayer times are unavailable for this night with the selected source. Check its date coverage and try again.",
   SYNC_IN_PROGRESS:

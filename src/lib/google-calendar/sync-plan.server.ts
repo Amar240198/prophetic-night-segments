@@ -41,6 +41,12 @@ function text(value: unknown): string {
 export function validateSyncRequest(value: unknown): SyncRequest {
   try {
     const body = record(value);
+    if (
+      body.selectionRevision !== undefined &&
+      body.selectionRevision !== null &&
+      (typeof body.selectionRevision !== "string" || body.selectionRevision.length > 100)
+    )
+      throw new Error();
     const startDate = text(body.startDate);
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(startDate) ||
@@ -134,6 +140,9 @@ export function validateSyncRequest(value: unknown): SyncRequest {
       source = { kind: raw.kind, options: parsed };
     } else throw new Error();
     return {
+      ...(body.selectionRevision !== undefined
+        ? { selectionRevision: body.selectionRevision as string | null }
+        : {}),
       startDate,
       nights,
       mode,
