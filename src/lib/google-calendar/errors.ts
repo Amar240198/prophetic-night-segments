@@ -1,4 +1,10 @@
 export const GOOGLE_MESSAGES = {
+  PRAYER_TIMES_UNAVAILABLE:
+    "Prayer times are unavailable for this night with the selected source. Check its date coverage and try again.",
+  SYNC_IN_PROGRESS:
+    "A calendar sync is already running for this account. Wait for it to finish before retrying.",
+  SYNC_INCOMPLETE:
+    "The sync reached its time limit. Retry to finish; previously synced events will not be duplicated.",
   NOT_CONFIGURED:
     "Google Calendar connection is not configured yet. You can still download the calendar file.",
   CONNECTION_FAILED: "Google Calendar connection failed.",

@@ -17,7 +17,7 @@ export function validateSelectedEvents(value: unknown): CalendarEvent[] {
     !("events" in value) ||
     !Array.isArray(value.events) ||
     value.events.length < 1 ||
-    value.events.length > 9
+    value.events.length > Object.keys(GOOGLE_EVENT_TITLES).length
   )
     throw new GoogleCalendarError("INVALID_REQUEST");
   const seen = new Set<string>();
@@ -99,7 +99,7 @@ export function googleEventPayload(event: CalendarEvent) {
   };
 }
 
-async function googleFailure(response: Response): Promise<GoogleCalendarError> {
+export async function googleFailure(response: Response): Promise<GoogleCalendarError> {
   if (response.status === 401) return new GoogleCalendarError("SESSION_EXPIRED", 401);
   if (response.status === 429) return new GoogleCalendarError("RATE_LIMITED", 429);
   if (response.status === 403) {

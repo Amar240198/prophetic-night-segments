@@ -4,6 +4,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 import { formatCalendarTime } from "@/lib/calendar/buildCalendarEvents";
 import { GOOGLE_MESSAGES, type GoogleErrorCode } from "@/lib/google-calendar/errors";
+import {
+  DEFAULT_SYNC_NIGHTS,
+  FIXED_SYNC_HORIZONS,
+  CONTINUOUS_SYNC_NIGHTS,
+  type SyncPreference,
+  type SyncContext,
+  type SyncOptions,
+  type SyncResult,
+} from "@/lib/google-calendar/sync";
+import type { GoogleEventId } from "@/lib/google-calendar/plan";
 import type { EventOutcome } from "@/lib/google-calendar/events.server";
 
 interface Connection {
@@ -11,15 +21,20 @@ interface Connection {
   configured: boolean;
   email?: string;
   expiresAt?: number;
+  syncPreference?: SyncPreference | null;
 }
 const buttonClass =
   "border border-[#d0ae67] px-4 py-2 text-sm font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10 disabled:opacity-40";
 export function GoogleCalendarSection({
   events,
   valid,
+  syncContext,
+  syncOptions,
 }: {
   events: CalendarEvent[];
   valid: boolean;
+  syncContext?: SyncContext | null;
+  syncOptions?: SyncOptions;
 }) {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -32,48 +47,106 @@ export function GoogleCalendarSection({
     outcomes: EventOutcome[];
     events: CalendarEvent[];
   } | null>(null);
+  const [syncReport, setSyncReport] = useState<SyncResult | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [horizon, setHorizon] = useState<number | "continuous">(DEFAULT_SYNC_NIGHTS);
+  const horizonEdited = useRef(false);
+  const syncNights = horizon === "continuous" ? CONTINUOUS_SYNC_NIGHTS : horizon;
+  const checking = useRef<Promise<boolean> | null>(null);
   const popup = useRef<Window | null>(null);
   const inFlight = useRef(false);
   const selectedEvents = events.filter((event) => selected.includes(event.id));
 
-  const checkConnection = useCallback(() => {
-    return fetch("/api/google-calendar/session", { cache: "no-store" })
+  const checkConnection = useCallback((): Promise<boolean> => {
+    // Serialize checks so a pre-callback response cannot overwrite a newer connected response.
+    if (checking.current) return checking.current;
+    const pending = fetch("/api/google-calendar/session", {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    })
       .then(async (response) => {
         const body = await response.json();
         if (!response.ok) {
-          setConnection({ connected: false, configured: true });
           setError(
             GOOGLE_MESSAGES[body.error?.code as GoogleErrorCode] ??
               GOOGLE_MESSAGES.CONNECTION_FAILED,
           );
-          setConnecting(false);
-          return;
+          return false;
         }
         if (typeof body.connected !== "boolean" || typeof body.configured !== "boolean")
           throw new Error();
         setConnection(body);
+        if (!horizonEdited.current && body.syncPreference) {
+          if (body.syncPreference.mode === "continuous") setHorizon("continuous");
+          else if (
+            body.syncPreference.mode === "fixed" &&
+            FIXED_SYNC_HORIZONS.includes(body.syncPreference.horizonDays)
+          )
+            setHorizon(body.syncPreference.horizonDays);
+        }
         if (body.connected) {
           setConnecting(false);
           setError("");
         }
+        return body.connected as boolean;
       })
       .catch(() => {
-        setError(GOOGLE_MESSAGES.CONNECTION_FAILED);
+        setError(
+          "Unable to check Google Calendar connection. Retrying while sign-in is in progress.",
+        );
+        return false;
+      })
+      .finally(() => {
+        checking.current = null;
       });
+    checking.current = pending;
+    return pending;
   }, []);
 
   useEffect(() => {
     void checkConnection();
+    // Also recover when browser isolation makes popup.closed appear true early,
+    // or the parent tab was suspended while Google completed authentication.
+    const onFocus = () => {
+      void checkConnection();
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") onFocus();
+    };
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
   }, [checkConnection]);
   useEffect(() => {
     if (!connecting) return;
-    // Polling also handles providers/browsers that sever window.opener during OAuth.
+    let closedAt: number | null = null;
+    let lastCheck = 0;
+    let active = true;
+    function verify() {
+      lastCheck = Date.now();
+      void checkConnection().then((connected) => {
+        if (active && !connected && closedAt !== null && Date.now() - closedAt >= 15_000) {
+          setConnecting(false);
+          setError(
+            "Google sign-in closed, but a connection could not be confirmed. Please reconnect and approve Calendar access.",
+          );
+        }
+      });
+    }
     const interval = window.setInterval(() => {
-      void checkConnection();
-    }, 2500);
+      if (popup.current?.closed && closedAt === null) {
+        closedAt = Date.now();
+        verify();
+      } else if (Date.now() - lastCheck >= 2500) verify();
+    }, 500);
     const timeout = window.setTimeout(() => {
       setConnecting(false);
-      setError(GOOGLE_MESSAGES.CONNECTION_FAILED);
+      setError(
+        "Google sign-in timed out. Please reconnect and complete the Google consent screen.",
+      );
     }, 600_000);
     function receive(event: MessageEvent) {
       if (
@@ -82,19 +155,23 @@ export function GoogleCalendarSection({
         event.data?.type !== "pns-google-calendar"
       )
         return;
-      setConnecting(false);
-      if (event.data.status === "connected") void checkConnection();
-      else
+      if (event.data.status === "connected") verify();
+      else {
+        setConnecting(false);
         setError(
           GOOGLE_MESSAGES[event.data.status as GoogleErrorCode] ??
             GOOGLE_MESSAGES.CONNECTION_FAILED,
         );
+      }
     }
     window.addEventListener("message", receive);
+    window.addEventListener("focus", verify);
     return () => {
+      active = false;
       window.clearInterval(interval);
       window.clearTimeout(timeout);
       window.removeEventListener("message", receive);
+      window.removeEventListener("focus", verify);
     };
   }, [connecting, checkConnection]);
   useEffect(() => {
@@ -135,6 +212,9 @@ export function GoogleCalendarSection({
       const body = await response.json();
       setConnection({ connected: false, configured: true });
       setReport(null);
+      setSyncReport(null);
+      setHorizon(DEFAULT_SYNC_NIGHTS);
+      horizonEdited.current = false;
       setReviewing(false);
       setMessage(
         body.revoked
@@ -188,6 +268,68 @@ export function GoogleCalendarSection({
       setBusy(false);
     }
   }
+  async function sync() {
+    if (inFlight.current || !valid || !selectedEvents.length || !syncContext || !syncOptions)
+      return;
+    inFlight.current = true;
+    setBusy(true);
+    setSyncing(true);
+    setError("");
+    setMessage(`Adding ${syncNights} nights…`);
+    setReport(null);
+    setSyncReport(null);
+    try {
+      const response = await fetch("/api/google-calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: AbortSignal.timeout(310_000),
+        body: JSON.stringify({
+          ...syncContext,
+          nights: syncNights,
+          mode: horizon === "continuous" ? "continuous" : "fixed",
+          options: syncOptions,
+          selected: selectedEvents.map((event) => event.id as GoogleEventId),
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        setMessage("");
+        setError(
+          GOOGLE_MESSAGES[body.error?.code as GoogleErrorCode] ?? GOOGLE_MESSAGES.EVENT_FAILED,
+        );
+        return;
+      }
+      if (
+        body.nights !== syncNights ||
+        !Number.isInteger(body.syncedNights) ||
+        !Array.isArray(body.outcomes) ||
+        body.outcomes.length !== syncNights * selectedEvents.length
+      )
+        throw new Error();
+      setSyncReport(body);
+      const failed = body.outcomes.filter(
+        (item: { status: string }) => item.status === "failed",
+      ).length;
+      setMessage(
+        failed
+          ? `${body.syncedNights} of ${body.nights} nights fully synced. ${failed} events failed or were not attempted.`
+          : `${body.nights} nights synced to Google Calendar`,
+      );
+      if (failed)
+        setError(
+          "Some events were not synced. Review the dated results below. Retrying the same dates will not duplicate synced events.",
+        );
+    } catch {
+      setMessage("");
+      setError(
+        "The sync result could not be confirmed. Some events may have been saved. Retry the same dates to finish safely without duplicates.",
+      );
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+      setSyncing(false);
+    }
+  }
   return (
     <section className="mt-6 border-t border-white/10 pt-5" aria-labelledby="google-calendar-title">
       <h3 id="google-calendar-title" className="font-serif text-2xl">
@@ -203,7 +345,10 @@ export function GoogleCalendarSection({
       )}
       {connection?.connected ? (
         <>
-          <p className="mt-3 text-sm">Connected as: {connection.email}</p>
+          <p role="status" className="mt-3 text-sm">
+            Google Calendar connected
+          </p>
+          <p className="mt-1 text-sm">Connected as: {connection.email}</p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
@@ -269,6 +414,58 @@ export function GoogleCalendarSection({
               >
                 {busy ? "Working…" : `Add selected events (${selectedEvents.length})`}
               </button>
+              {syncContext && syncOptions ? (
+                <div className="mt-5 border-t border-white/10 pt-4">
+                  <fieldset disabled={busy} className="mb-4">
+                    <legend className="mb-2">Sync calendar for:</legend>
+                    <div className="flex flex-wrap gap-3">
+                      {[...FIXED_SYNC_HORIZONS, "continuous" as const].map((choice) => (
+                        <label key={choice} className={`${buttonClass} flex items-center gap-2`}>
+                          <input
+                            type="radio"
+                            name="google-sync-horizon"
+                            value={choice}
+                            checked={horizon === choice}
+                            onChange={() => {
+                              horizonEdited.current = true;
+                              setHorizon(choice);
+                            }}
+                          />
+                          {choice === "continuous" ? "Continuous" : `${choice} days`}
+                        </label>
+                      ))}
+                    </div>
+                  </fieldset>
+                  {horizon === "continuous" && (
+                    <p className="mb-3 text-sm" role="note">
+                      Continuous saves your rolling-sync preference and syncs the first{" "}
+                      {CONTINUOUS_SYNC_NIGHTS} nights now. Automatic renewal is not enabled yet; run
+                      sync again to extend the calendar.
+                    </p>
+                  )}
+                  <p className="text-sm">
+                    Sync {syncNights} consecutive nights starting {syncContext.startDate}, using the
+                    prayer source from your last calculation. Each night uses its own prayer times.
+                    Only checked events are included. Your choice is saved when you sync. Shortening
+                    the horizon does not delete existing events.
+                  </p>
+                  <button
+                    type="button"
+                    className={`${buttonClass} mt-3`}
+                    disabled={busy || !valid || !selectedEvents.length}
+                    onClick={() => void sync()}
+                  >
+                    {syncing
+                      ? `Adding ${syncNights} nights…`
+                      : `Sync ${syncNights} nights to Google Calendar`}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm">
+                  For multi-night sync, calculate with a dated prayer-time source above. Manual
+                  times and demonstrations cover only one night.
+                </p>
+              )}
             </div>
           )}
         </>
@@ -310,6 +507,25 @@ export function GoogleCalendarSection({
         <p role="alert" className="mt-3 text-sm text-red-300">
           {error}
         </p>
+      )}
+      {syncReport && (
+        <details className="mt-4" open={syncReport.syncedNights !== syncReport.nights}>
+          <summary>Calendar sync results by night</summary>
+          <ul aria-label="Google Calendar nightly sync results" className="mt-3 space-y-2 text-sm">
+            {syncReport.outcomes.map((item) => (
+              <li key={`${item.date}-${item.id}`}>
+                {item.date} — {events.find((event) => event.id === item.id)?.title ?? item.id}:{" "}
+                {item.status === "failed"
+                  ? GOOGLE_MESSAGES[item.code ?? "EVENT_FAILED"]
+                  : item.status === "existing"
+                    ? "Already synced"
+                    : item.status === "updated"
+                      ? "Updated"
+                      : "Added"}
+              </li>
+            ))}
+          </ul>
+        </details>
       )}
       {report && (
         <ul aria-label="Google Calendar submission results" className="mt-3 space-y-2 text-sm">

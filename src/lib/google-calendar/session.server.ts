@@ -10,6 +10,8 @@ export const FLOW_COOKIE = "pns_google_oauth";
 export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.owned";
 export const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 export interface GoogleSession {
+  connectionId: string;
+  subject: string;
   accessToken: string;
   email: string;
   expiresAt: number;
@@ -165,6 +167,8 @@ export async function readSession(request: NextRequest): Promise<GoogleSession> 
       throw new GoogleCalendarError("SESSION_EXPIRED", 401);
   }
   return {
+    connectionId: row.connection_id,
+    subject: row.google_subject,
     accessToken: decryptToken(row.encrypted_access_token, row.google_subject, "access"),
     email: row.google_account_email,
     expiresAt: row.encrypted_refresh_token

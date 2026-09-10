@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { GoogleCalendarError } from "@/lib/google-calendar/errors";
 import { errorResponse, privateResponse, readSession } from "@/lib/google-calendar/session.server";
+import { readSyncPreference } from "@/lib/google-calendar/sync-database.server";
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
@@ -10,6 +11,7 @@ export async function GET(request: NextRequest) {
       configured: true,
       email: session.email,
       expiresAt: session.expiresAt,
+      syncPreference: await readSyncPreference(session.connectionId),
     });
   } catch (error) {
     if (

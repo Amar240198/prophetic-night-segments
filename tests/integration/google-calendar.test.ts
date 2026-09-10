@@ -24,6 +24,7 @@ vi.mock("@neondatabase/serverless", () => ({
 }));
 beforeAll(async () => {
   await db.exec(readFileSync("migrations/001_google_calendar_persistence.sql", "utf8"));
+  await db.exec(readFileSync("migrations/002_google_calendar_event_mappings.sql", "utf8"));
 }, 60_000);
 afterAll(async () => {
   await db.close();
@@ -74,7 +75,7 @@ const event = {
 };
 function request(path: string, options: { cookie?: string; body?: unknown; origin?: string } = {}) {
   return new NextRequest(`${origin}/api/google-calendar/${path}`, {
-    method: ["events", "disconnect"].includes(path) ? "POST" : "GET",
+    method: ["events", "disconnect", "sync"].includes(path) ? "POST" : "GET",
     headers: {
       origin: options.origin ?? origin,
       "Content-Type": "application/json",
@@ -544,4 +545,433 @@ it("a stale refresh cannot overwrite a newer login or resurrect a disconnected a
     new Date(Date.now() + 3600_000).toISOString(),
   );
   expect(await findSession(hash)).toBeNull();
+});
+
+import { POST as sync } from "../../src/app/api/google-calendar/sync/route";
+import { Temporal } from "@js-temporal/polyfill";
+import {
+  calculateSyncNight,
+  syncDates,
+  validateSyncRequest,
+} from "../../src/lib/google-calendar/sync-plan.server";
+import {
+  acquireSyncLease,
+  releaseSyncLease,
+} from "../../src/lib/google-calendar/sync-database.server";
+import { syncEventIdentity } from "../../src/lib/google-calendar/sync-event.server";
+import type { SyncRequest } from "../../src/lib/google-calendar/sync";
+
+const syncInput: SyncRequest = {
+  startDate: "2026-03-20",
+  nights: 30,
+  source: { kind: "london-unified" },
+  selected: ["last-third"],
+  options: {
+    wakeBufferMinutes: 15,
+    dawudSelected: false,
+    fajrPreparationMinutes: 20,
+    firstAdhanMinutes: null,
+  },
+};
+function calendarService(failInsert = 0, failStatus = 500, ambiguous = false) {
+  const stored = new Map<
+    string,
+    {
+      start: { dateTime: string };
+      extendedProperties: { private: { localNight: string; planEvent: string } };
+      etag: string;
+      status: string;
+    }
+  >();
+  let inserts = 0;
+  let patches = 0;
+  const providerDates: string[] = [];
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const target = new URL(String(url));
+      if (target.hostname === "api.islamic.app") {
+        const date = target.pathname.split("/").at(-1)!;
+        providerDates.push(date);
+        const day = Number(date.slice(0, 2));
+        return json({
+          code: 200,
+          data: {
+            timings: {
+              Maghrib: `18:${String(day).padStart(2, "0")}`,
+              Fajr: `05:${String(59 - day).padStart(2, "0")}`,
+            },
+            meta: { timezone: target.searchParams.get("timezone"), method: 3 },
+          },
+        });
+      }
+      if (target.hostname !== "www.googleapis.com") throw new Error("Unexpected test endpoint");
+      if (init?.method === "POST") {
+        inserts++;
+        const payload = JSON.parse(init.body as string);
+        if (inserts === failInsert && !ambiguous) return json({}, failStatus);
+        if (stored.has(payload.id)) return json({}, 409);
+        stored.set(payload.id, { ...payload, status: "confirmed", etag: '"v1"' });
+        if (inserts === failInsert && ambiguous) throw new TypeError("Lost response after insert");
+        return json(payload);
+      }
+      const id = target.pathname.split("/").at(-1)!;
+      if (init?.method === "PATCH") {
+        patches++;
+        expect((init.headers as Record<string, string>)["If-Match"]).toBe('"v1"');
+        stored.set(id, { ...stored.get(id), ...JSON.parse(init.body as string) });
+        return json(stored.get(id));
+      }
+      return stored.has(id) ? json(stored.get(id)) : json({}, 404);
+    }),
+  );
+  return { stored, providerDates, inserts: () => inserts, patches: () => patches };
+}
+async function runSync(body: SyncRequest, cookie: string) {
+  const response = await sync(request("sync", { cookie, body }));
+  expect(response.status).toBe(200);
+  return response.json();
+}
+
+describe("persistent multi-night Google sync", () => {
+  it("calculates 30 changing nights across DST/month boundary and skips every event on second sync", async () => {
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    const first = await runSync(syncInput, cookie);
+    expect(first.syncedNights).toBe(30);
+    expect(first.outcomes).toHaveLength(30);
+    expect(first.outcomes.every((item: { status: string }) => item.status === "created")).toBe(
+      true,
+    );
+    expect(service.stored.size).toBe(30);
+    const dates = syncDates(syncInput.startDate, 30);
+    expect(dates.at(-1)).toBe("2026-04-18");
+    for (const date of dates) {
+      const [expected] = await calculateSyncNight(syncInput, date);
+      const actual = [...service.stored.values()].find(
+        (item) => item.extendedProperties.private.localNight === date,
+      )!;
+      expect(actual.start.dateTime).toBe(expected!.start);
+      expect(actual.extendedProperties.private.planEvent).toBe("last-third");
+    }
+    const clocks = [...service.stored.values()].map((item) =>
+      Temporal.Instant.from(item.start.dateTime)
+        .toZonedDateTimeISO("Europe/London")
+        .toPlainTime()
+        .toString(),
+    );
+    expect(new Set(clocks).size).toBeGreaterThan(20);
+    const second = await runSync(syncInput, cookie);
+    expect(second.syncedNights).toBe(30);
+    expect(second.outcomes.every((item: { status: string }) => item.status === "existing")).toBe(
+      true,
+    );
+    expect(service.inserts()).toBe(30);
+    expect(service.patches()).toBe(0);
+    const mappings = await db.query(
+      "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE synced_at IS NOT NULL",
+    );
+    expect(mappings.rows[0]).toEqual({ count: 30 });
+  }, 20_000);
+
+  it("fetches each date including following Fajr across a year boundary with a quarter-hour timezone", async () => {
+    const service = calendarService();
+    const input: SyncRequest = {
+      ...syncInput,
+      startDate: "2026-12-20",
+      selected: ["fajr", "prayer"],
+      source: {
+        kind: "coordinates",
+        latitude: 27.7,
+        longitude: 85.3,
+        timeZone: "Asia/Kathmandu",
+        calculationMethod: 3,
+      },
+    };
+    const result = await runSync(input, await sessionCookie());
+    expect(result.syncedNights).toBe(30);
+    expect(service.stored.size).toBe(60);
+    expect(new Set(service.providerDates).size).toBe(31);
+    expect(service.providerDates).toContain("01-01-2027");
+    expect(service.providerDates).toContain("19-01-2027");
+    const fajr = [...service.stored.values()].find(
+      (item) =>
+        item.extendedProperties.private.localNight === "2026-12-31" &&
+        item.extendedProperties.private.planEvent === "fajr",
+    )!;
+    expect(
+      Temporal.Instant.from(fajr.start.dateTime).toZonedDateTimeISO("Asia/Kathmandu").toString(),
+    ).toContain("2027-01-01T05:58:00+05:45");
+    expect(
+      new Set(
+        [...service.stored.values()].map((item) => item.extendedProperties.private.planEvent),
+      ),
+    ).toEqual(new Set(["fajr", "prayer"]));
+  }, 20_000);
+
+  it("reports partial Google failures and safely finishes a retry, including a lost insert response", async () => {
+    const service = calendarService(2, 500, true);
+    const cookie = await sessionCookie();
+    const input = { ...syncInput, nights: 3 };
+    const first = await runSync(input, cookie);
+    expect(first.syncedNights).toBe(2);
+    expect(first.outcomes.map((item: { status: string }) => item.status)).toEqual([
+      "created",
+      "failed",
+      "created",
+    ]);
+    expect((await runSync(input, cookie)).syncedNights).toBe(3);
+    expect(service.inserts()).toBe(3);
+    expect(service.stored.size).toBe(3);
+  });
+
+  it("stops Google requests after a quota failure and reports all remaining selected events", async () => {
+    const service = calendarService(2, 429);
+    const result = await runSync(
+      { ...syncInput, nights: 3, selected: ["fajr", "last-third"] },
+      await sessionCookie(),
+    );
+    expect(service.inserts()).toBeLessThanOrEqual(3);
+    expect(result.outcomes).toHaveLength(6);
+    expect(result.syncedNights).toBe(0);
+    expect(
+      result.outcomes.filter((item: { code: string }) => item.code === "RATE_LIMITED"),
+    ).toHaveLength(4);
+  });
+
+  it("updates changed planning offsets in place and preserves mappings across browser sessions", async () => {
+    const service = calendarService();
+    const input: SyncRequest = { ...syncInput, nights: 1, selected: ["wake"] };
+    await runSync(input, await sessionCookie());
+    const id = [...service.stored.keys()][0]!;
+    const original = service.stored.get(id)!.start.dateTime;
+    const result = await runSync(
+      { ...input, options: { ...input.options, wakeBufferMinutes: 30 } },
+      await sessionCookie(),
+    );
+    expect(result.outcomes[0].status).toBe("updated");
+    expect(service.inserts()).toBe(1);
+    expect(service.patches()).toBe(1);
+    expect(Date.parse(service.stored.get(id)!.start.dateTime)).toBe(
+      Date.parse(original) - 15 * 60_000,
+    );
+  });
+
+  it("does not invent London timetable entries beyond published coverage", async () => {
+    const service = calendarService();
+    const result = await runSync(
+      { ...syncInput, nights: 3, startDate: "2026-12-30" },
+      await sessionCookie(),
+    );
+    expect(result.syncedNights).toBe(1);
+    expect(result.outcomes.slice(1).map((item: { code: string }) => item.code)).toEqual([
+      "PRAYER_TIMES_UNAVAILABLE",
+      "PRAYER_TIMES_UNAVAILABLE",
+    ]);
+    expect(service.inserts()).toBe(1);
+  });
+
+  it("enforces an account lease across sessions and releases only the matching owner", async () => {
+    const cookie = await sessionCookie();
+    const row = await db.query("SELECT id FROM google_connections");
+    const connection = row.rows[0]!.id as string;
+    const owner = randomUUID();
+    expect(await acquireSyncLease(connection, owner)).toBe(true);
+    expect(await acquireSyncLease(connection, randomUUID())).toBe(false);
+    await releaseSyncLease(connection, randomUUID());
+    const response = await sync(request("sync", { cookie, body: syncInput }));
+    expect(response.status).toBe(409);
+    expect((await response.json()).error.code).toBe("SYNC_IN_PROGRESS");
+    await releaseSyncLease(connection, owner);
+    expect(await acquireSyncLease(connection, randomUUID())).toBe(true);
+  });
+
+  it("rejects forged origin, unbounded horizons, malformed dates and unselected optional reminders", async () => {
+    const response = await sync(
+      request("sync", { origin: "https://attacker.example", body: syncInput }),
+    );
+    expect(response.status).toBe(403);
+    for (const body of [
+      { ...syncInput, nights: 31 },
+      { ...syncInput, startDate: "2026-02-30" },
+      { ...syncInput, selected: ["fajr", "fajr"] },
+      { ...syncInput, selected: ["first-adhan-reminder"] },
+      { ...syncInput, source: { kind: "manual" } },
+    ]) {
+      expect(() => validateSyncRequest(body)).toThrow();
+    }
+    expect(syncEventIdentity("account-a", "2026-01-01", "fajr")).not.toBe(
+      syncEventIdentity("account-b", "2026-01-01", "fajr"),
+    );
+  });
+});
+
+import { readSyncPreference } from "../../src/lib/google-calendar/sync-database.server";
+
+describe("selectable and continuous sync horizons", () => {
+  it.each([60, 90])(
+    "independently calculates and persists a fixed %i-day horizon",
+    async (nights) => {
+      const service = calendarService();
+      const cookie = await sessionCookie();
+      const input: SyncRequest = { ...syncInput, startDate: "2026-03-01", mode: "fixed", nights };
+      const result = await runSync(input, cookie);
+      expect(result.syncedNights).toBe(nights);
+      expect(result.outcomes).toHaveLength(nights);
+      expect(service.inserts()).toBe(nights);
+      expect(new Set(service.stored.keys()).size).toBe(nights);
+      expect(new Set([...service.stored.values()].map((item) => item.start.dateTime)).size).toBe(
+        nights,
+      );
+      expect(
+        [...service.stored.values()].every(
+          (item) => item.extendedProperties.private.planEvent === "last-third",
+        ),
+      ).toBe(true);
+      expect((await (await session(request("session", { cookie }))).json()).syncPreference).toEqual(
+        { mode: "fixed", horizonDays: nights },
+      );
+      const finalDate = syncDates(input.startDate, nights).at(-1)!;
+      const [expected] = await calculateSyncNight(input, finalDate);
+      expect(
+        [...service.stored.values()].find(
+          (item) => item.extendedProperties.private.localNight === finalDate,
+        )!.start.dateTime,
+      ).toBe(expected!.start);
+    },
+    30_000,
+  );
+
+  it("populates Continuous with 90 nights and persists a distinct replayable rolling preference", async () => {
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    const input: SyncRequest = {
+      ...syncInput,
+      startDate: "2026-03-01",
+      mode: "continuous",
+      nights: 90,
+    };
+    const result = await runSync(input, cookie);
+    expect(result.syncedNights).toBe(90);
+    expect(service.stored.size).toBe(90);
+    const rows = await db.query(
+      "SELECT sync_mode, horizon_days, prayer_source, selected_event_types, planning_options, configuration_version FROM google_calendar_sync_preferences",
+    );
+    expect(rows.rows).toEqual([
+      {
+        sync_mode: "continuous",
+        horizon_days: 90,
+        prayer_source: input.source,
+        selected_event_types: input.selected,
+        planning_options: input.options,
+        configuration_version: 1,
+      },
+    ]);
+    expect((await (await session(request("session", { cookie }))).json()).syncPreference).toEqual({
+      mode: "continuous",
+      horizonDays: 90,
+    });
+    const fixed = await runSync({ ...input, mode: "fixed" }, cookie);
+    expect(fixed.syncedNights).toBe(90);
+    expect(fixed.outcomes.every((item: { status: string }) => item.status === "existing")).toBe(
+      true,
+    );
+    expect(service.inserts()).toBe(90);
+    expect((await db.query("SELECT sync_mode FROM google_calendar_sync_preferences")).rows).toEqual(
+      [{ sync_mode: "fixed" }],
+    );
+  }, 35_000);
+
+  it.each(
+    [
+      [30, 60, 90, 90, 30],
+      [30, 90, 90, 30],
+    ].map((horizons) => ({ horizons })),
+  )(
+    "extends $horizons, repeats idempotently, and shortens without deleting events",
+    async ({ horizons }) => {
+      const service = calendarService();
+      const cookie = await sessionCookie();
+      for (const nights of horizons) {
+        const before = service.stored.size;
+        const result = await runSync(
+          { ...syncInput, startDate: "2026-03-01", mode: "fixed", nights },
+          cookie,
+        );
+        expect(result.syncedNights).toBe(nights);
+        expect(
+          result.outcomes.filter((item: { status: string }) => item.status === "created"),
+        ).toHaveLength(Math.max(0, nights - before));
+        expect(
+          result.outcomes.filter((item: { status: string }) => item.status === "existing"),
+        ).toHaveLength(Math.min(before, nights));
+        expect(service.stored.size).toBe(Math.max(before, nights));
+      }
+      expect(service.inserts()).toBe(90);
+      expect(service.patches()).toBe(0);
+      expect(vi.mocked(fetch).mock.calls.some(([, init]) => init?.method === "DELETE")).toBe(false);
+      expect((await (await session(request("session", { cookie }))).json()).syncPreference).toEqual(
+        {
+          mode: "fixed",
+          horizonDays: 30,
+        },
+      );
+      expect(
+        (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      ).toEqual([{ count: 90 }]);
+    },
+    50_000,
+  );
+
+  it("persists Continuous intent on partial failure and disconnect removes future sync eligibility", async () => {
+    const service = calendarService(2, 429);
+    const cookie = await sessionCookie();
+    const input: SyncRequest = {
+      ...syncInput,
+      startDate: "2026-03-01",
+      mode: "continuous",
+      nights: 90,
+    };
+    const result = await runSync(input, cookie);
+    expect(result.syncedNights).toBeLessThan(90);
+    expect(result.outcomes).toHaveLength(90);
+    expect(result.outcomes.some((item: { code: string }) => item.code === "RATE_LIMITED")).toBe(
+      true,
+    );
+    expect(service.inserts()).toBeLessThanOrEqual(3);
+    const connection = (await db.query("SELECT id FROM google_connections")).rows[0]!.id as string;
+    expect(await readSyncPreference(connection)).toEqual({ mode: "continuous", horizonDays: 90 });
+    expect((await disconnect(request("disconnect", { cookie }))).status).toBe(200);
+    expect(await readSyncPreference(connection)).toBeNull();
+    const calls = vi.mocked(fetch).mock.calls.length;
+    const response = await sync(request("sync", { cookie, body: input }));
+    expect(response.status).toBe(401);
+    expect(fetch).toHaveBeenCalledTimes(calls);
+    expect(
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_sync_preferences WHERE sync_mode = 'continuous'",
+        )
+      ).rows,
+    ).toEqual([{ count: 0 }]);
+  });
+
+  it("rejects unsupported modes/horizons before persisting or calling Google", async () => {
+    const cookie = await sessionCookie();
+    for (const change of [
+      { mode: "continuous", nights: 30 },
+      { mode: "fixed", nights: 45 },
+      { mode: "forever", nights: 90 },
+      { mode: "fixed", nights: 91 },
+      { mode: "fixed", nights: "60" },
+    ]) {
+      const response = await sync(request("sync", { cookie, body: { ...syncInput, ...change } }));
+      expect(response.status).toBe(400);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await db.query("SELECT * FROM google_calendar_sync_preferences")).rows).toHaveLength(0);
+    expect(
+      validateSyncRequest({ ...syncInput, mode: "continuous", nights: undefined }).nights,
+    ).toBe(90);
+  });
 });

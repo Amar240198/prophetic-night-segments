@@ -1,5 +1,6 @@
 "use client";
 
+import type { SyncContext } from "@/lib/google-calendar/sync";
 import { useState } from "react";
 import { GoogleCalendarSection } from "./GoogleCalendarSection";
 import { DEFAULT_BUFFER_BEFORE_FAJR_MINUTES } from "./ScheduleTools";
@@ -14,11 +15,13 @@ export function CalendarCard({
   dawudSelected,
   prayerSource,
   firstAdhanMinutes = null,
+  syncContext,
 }: {
   result: NightCalculationResult;
   dawudSelected: boolean;
   prayerSource: string;
   firstAdhanMinutes?: number | null;
+  syncContext?: SyncContext | null;
 }) {
   const [buffer, setBuffer] = useState("15");
   const [custom, setCustom] = useState("15");
@@ -170,6 +173,13 @@ export function CalendarCard({
       )}
       <GoogleCalendarSection
         valid={valid}
+        syncContext={syncContext}
+        syncOptions={{
+          wakeBufferMinutes: valid ? minutes : 0,
+          dawudSelected,
+          fajrPreparationMinutes: DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
+          firstAdhanMinutes,
+        }}
         events={buildGooglePlan(result, {
           wakeBufferMinutes: valid ? minutes : 0,
           dawudSelected,

@@ -11,6 +11,8 @@ export const GOOGLE_EVENT_TITLES = {
   "fajr-preparation": "Prepare for Fajr",
   "first-adhan-reminder": "First Adhan Reminder",
   fajr: "Fajr",
+  "final-sixth": "Sixth of the Night — Final Sixth",
+  prayer: "Qiyam — Prayer Window",
 } as const;
 export type GoogleEventId = keyof typeof GOOGLE_EVENT_TITLES;
 const DAWUD_CONTEXT =
@@ -59,5 +61,12 @@ export function buildGooglePlan(
     ),
     make("dawud-prayer", result.dawudPattern.prayer.start, result.dawudPattern.prayer.end, true),
     make("fajr", result.night.end),
+    make("final-sixth", result.dawudPattern.finalSleep.start),
+    make(
+      "prayer",
+      options.dawudSelected ? result.dawudPattern.prayer.start : result.lastThird.start,
+      options.dawudSelected ? result.dawudPattern.prayer.end : result.lastThird.end,
+      options.dawudSelected,
+    ),
   ];
 }

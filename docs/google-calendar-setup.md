@@ -4,6 +4,8 @@ The integration is implemented, but Google sign-in requires your own Google Clou
 OAuth credentials. Without them the app shows a setup message and keeps `.ics`
 downloads available. No Google account is required to calculate a night or download a file.
 
+For persistent multi-night sync, see [selectable horizons and migration 002](google-calendar-sync.md).
+
 ## 1. Create a Google Cloud project
 
 1. Open [Google Cloud Console](https://console.cloud.google.com/) and sign in.
@@ -34,8 +36,9 @@ downloads available. No Google account is required to calculate a night or downl
    an existing primary calendar. `calendar.events.owned` is the narrowest supported
    scope for this destination; `calendar.app.created` would require using a new
    app-created secondary calendar instead. Although Google grants read/change/delete
-   permissions in the chosen scope, this implementation inserts events and reads
-   only a matching event identifier to verify retries. It never edits unrelated events.
+   permissions in the chosen scope, this implementation inserts events, reads matching identifiers to verify retries,
+   and updates app-owned forward-sync events when their calculated schedule changes.
+   It never edits unrelated events.
 
 6. For public use beyond your test users, complete Google's publishing/verification
    requirements. Supply a real homepage, support details, privacy policy, and any
@@ -212,16 +215,16 @@ disconnect. They do not replace a live sign-in/import test with your own credent
   users can remove the app through Google Account settings. Database failure returns
   a safe error instead of claiming successful disconnection.
 - Database records use absolute `timestamptz` expiries; prayer-time precision and DST
-  handling are unchanged. No preferences, event mappings, or automatic sync exist yet.
+  handling are unchanged. Forward-sync event mappings are described in the sync guide; automatic rolling sync is not implemented.
 - Mutations require the configured same-origin `Origin` header. Requests are capped
-  at 64 KiB and nine unique allowed event types, with validated explicit timestamps,
+  at 64 KiB and eleven unique allowed event types, with validated explicit timestamps,
   IANA timezone and a maximum 24-hour event span. Requests cannot supply attendees,
   arbitrary calendars, redirects, or Google API URLs. Events are private and send no
   invitations. Descriptions are HTML-escaped before reaching Google.
 - Google requires a positive duration: boundary reminders occupy **one minute**,
   while their starts remain exact. Prayer windows retain their exact calculated
   endpoints. Existing ICS precision and duration policies are unchanged.
-- Deterministic event IDs make ordinary retries idempotent. Changed times create a
+- The legacy one-night endpoint uses deterministic event IDs to make ordinary retries idempotent. Changed times create a
   new event; the previous plan is not automatically edited/deleted. Events are inserted
   individually, so partial success is possible. The UI shows each outcome; retrying
   skips confirmed existing events. Google does not guarantee collision detection

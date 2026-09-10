@@ -125,6 +125,10 @@ Calendar (Settings → Import & export), or Outlook and compare the event dates/
 with the card, using the same display timezone. Try the Dāwūd view and a custom buffer
 that crosses midnight. The Google Calendar disclosure provides one prefilled event
 link per selection; review and save each event there. No Google authentication is
-required by this app, though Google may require sign-in to save an event. This MVP is
-a one-night export, not a subscription or automatic sync. Live imports into all calendar
+required for these links, though Google may require sign-in to save an event. These links
+and file downloads cover one night. The connected forward-sync action below offers 30, 60, or 90 nights. Live imports into all calendar
 clients require manual verification.
+
+### Google Calendar forward sync
+
+The calendar card offers 30-, 60-, and 90-day horizons plus Continuous (an initial 90 nights with a persisted rolling preference) in one explicit server operation, with account-scoped event mappings, safe retries, partial results, and automatic post-OAuth UI recovery. Requires consolidated migration 002 after migration 001. See [calculation, API contract, limitations, and approved rollout steps](docs/google-calendar-sync.md). Continuous does not yet execute automatically; no cron or background worker is enabled.

@@ -3,6 +3,7 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { calculateNightSegments as calculateSharedNightSegments } from "@prophetic-night/night-engine";
 import type { NightCalculationInput, NightCalculationResult } from "@prophetic-night/night-engine";
+import type { SyncContext, SyncSource } from "@/lib/google-calendar/sync";
 import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
 import { CalendarCard } from "@/components/CalendarCard";
 import { NightEndTimeline, ScheduleTools } from "@/components/ScheduleTools";
@@ -399,6 +400,7 @@ export default function Home() {
   const [customSettings, setCustomSettings] = useState(["18", "", "17"]);
   const [loadingLive, setLoadingLive] = useState(false);
   const [providerError, setProviderError] = useState("");
+  const [syncContext, setSyncContext] = useState<SyncContext | null>(null);
   const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(null);
   const [submitted, setSubmitted] = useState<NightCalculationInput | null>(null);
   const [firstAdhanMinutes, setFirstAdhanMinutes] = useState<number | null>(null);
@@ -455,6 +457,16 @@ export default function Home() {
         };
         if (!response.ok)
           throw new Error(body.error?.message ?? "Prayer times could not be loaded.");
+        setSyncContext({
+          startDate: serviceDate,
+          source: {
+            kind: "coordinates",
+            latitude: numericLatitude,
+            longitude: numericLongitude,
+            timeZone: coordinateTimeZone,
+            calculationMethod: method,
+          },
+        });
         setProviderInfo({
           maghrib: body.input.maghrib,
           fajr: body.input.fajr,
@@ -493,6 +505,7 @@ export default function Home() {
           source: "Manual input",
           serviceDate,
         };
+        setSyncContext(null);
         setProviderInfo(manualTimes);
         setSubmitted({
           maghrib,
@@ -529,6 +542,44 @@ export default function Home() {
 
       const prayerTimes = body as LivePrayerTimes;
       // Provider output is passed unchanged into the existing calculation input.
+      const source: SyncSource =
+        prayerTimeSource === "london-unified"
+          ? { kind: "london-unified" }
+          : {
+              kind: "aladhan",
+              options: {
+                city,
+                country: countryCode,
+                state,
+                calculationMethod: method as Extract<
+                  SyncSource,
+                  { kind: "aladhan" }
+                >["options"]["calculationMethod"],
+                school: school as 0 | 1,
+                latitudeAdjustmentMethod: latitudeAdjustmentMethod as 1 | 2 | 3,
+                midnightMode: midnightMode as 0 | 1,
+                shafaq: shafaq as "general" | "ahmer" | "abyad",
+                tune: [...tune] as [
+                  number,
+                  number,
+                  number,
+                  number,
+                  number,
+                  number,
+                  number,
+                  number,
+                  number,
+                ],
+                ...(method === 99
+                  ? {
+                      methodSettings: customSettings.map((value) =>
+                        value.trim() ? Number(value) : null,
+                      ) as [number | null, number | null, number | null],
+                    }
+                  : {}),
+              },
+            };
+      setSyncContext({ startDate: serviceDate, source });
       setProviderInfo(prayerTimes);
       setSubmitted({
         maghrib: prayerTimes.maghrib,
@@ -587,6 +638,7 @@ export default function Home() {
     setPrayerTimeSource("manual");
     setSubmitted(null);
     setProviderInfo(null);
+    setSyncContext(null);
     setProviderError("");
   }
 
@@ -1401,6 +1453,7 @@ export default function Home() {
               <>
                 <CalendarCard
                   result={engineResult}
+                  syncContext={syncContext}
                   dawudSelected={timelineView === "dawud"}
                   prayerSource={providerInfo?.source ?? "Supplied prayer times"}
                   firstAdhanMinutes={firstAdhanMinutes}
