@@ -658,7 +658,7 @@ export default function Home() {
           </h1>
           <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-[#9baca7] sm:mt-6 sm:text-lg sm:leading-8">
             One night, shown through its conventional thirds, the Dāwūd prayer pattern, and the
-            varied timing of Prophetic qiyam.
+            varied timing of Prophetic Qiyam / Tahajjud.
           </p>
         </div>
       </header>
@@ -1162,7 +1162,7 @@ export default function Home() {
                   [
                     ["general", "General Night Division"],
                     ["dawud", "Dawud عليه السلام Pattern"],
-                    ["prophetic", "Prophetic Qiyam"],
+                    ["prophetic", "Prophetic Qiyam / Tahajjud"],
                   ] as const
                 ).map(([view, label]) => (
                   <button
@@ -1321,9 +1321,11 @@ export default function Home() {
                 aria-labelledby="timeline-tab-prophetic"
               >
                 <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
-                  PROPHETIC QIYAM
+                  PROPHETIC QIYAM / TAHAJJUD
                 </p>
-                <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Prophetic Qiyam Timeline</h2>
+                <h2 className="mt-2 font-serif text-3xl sm:text-4xl">
+                  Prophetic Qiyam / Tahajjud Timeline
+                </h2>
                 <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
                   The Prophet Muhammad ﷺ did not restrict his night prayer to one fixed point of the
                   night. Authentic narrations describe him sleeping, waking, and praying during the
@@ -1359,7 +1361,7 @@ export default function Home() {
                   </div>
                   <div
                     className="mt-7 grid gap-2 sm:grid-cols-3"
-                    aria-label="Variation in reported qiyam timing"
+                    aria-label="Variation in reported Qiyam / Tahajjud timing"
                   >
                     {[
                       ["Earlier", "Witr was not confined to the end"],
@@ -1373,10 +1375,10 @@ export default function Home() {
                     ))}
                   </div>
                   <p className="mt-7 border-l-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm leading-6 text-[#c8d4d0]">
-                    This varied Prophetic qiyam evidence is distinct from the separately narrated
-                    Dāwūd عليه السلام pattern: sleep half the night, pray one third, then sleep one
-                    sixth. This view does not impose that six-part pattern on the Prophet Muhammad
-                    ﷺ.
+                    This varied Prophetic Qiyam / Tahajjud evidence is distinct from the separately
+                    narrated Dāwūd عليه السلام pattern: sleep half the night, pray one third, then
+                    sleep one sixth. This view does not impose that six-part pattern on the Prophet
+                    Muhammad ﷺ.
                   </p>
                 </div>
                 <div className="mt-6" aria-labelledby="prophetic-qiyam-evidence">

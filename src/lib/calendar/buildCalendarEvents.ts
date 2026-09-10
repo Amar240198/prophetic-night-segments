@@ -1,7 +1,17 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type { NightCalculationResult } from "@prophetic-night/night-engine";
 
-export type CalendarEventId = "wake" | "last-third" | "final-sixth" | "prayer" | "fajr" | "sleep";
+export const NIGHT_PART_TITLES = {
+  "night-part-1": "Night — Part 1",
+  "night-part-2": "Night — Part 2",
+  "night-part-3": "Night — Part 3",
+  "night-part-4": "Night — Part 4",
+  "night-part-5": "Night — Part 5",
+  "night-part-6": "Night — Part 6",
+} as const;
+export type NightPartEventId = keyof typeof NIGHT_PART_TITLES;
+export type CalendarEventId =
+  NightPartEventId | "wake" | "last-third" | "final-sixth" | "prayer" | "fajr" | "sleep";
 export interface CalendarEvent {
   id: string;
   title: string;
@@ -84,13 +94,27 @@ export function buildCalendarEvents(
     timeZone,
   });
   return [
-    event("wake", "Qiyam — Wake Up", wake),
-    event("last-third", "Qiyam — Last Third Begins", result.lastThird.start),
+    event("wake", "Qiyam / Tahajjud — Wake Up", wake),
+    event("last-third", "Qiyam / Tahajjud — Last Third Begins", result.lastThird.start),
+    ...Object.entries(NIGHT_PART_TITLES).map(([id, title], index) =>
+      event(
+        id as NightPartEventId,
+        title,
+        result.boundaries[index]!.instant,
+        result.boundaries[index + 1]!.instant,
+      ),
+    ),
     event("final-sixth", "Sixth of the Night — Final Sixth", result.dawudPattern.finalSleep.start),
-    event("prayer", "Qiyam — Prayer Window", window.start, window.end),
+    event("prayer", "Qiyam / Tahajjud — Prayer Window", window.start, window.end),
     event("fajr", "Fajr", result.night.end),
     ...(options.pattern === "dawud"
-      ? [event("sleep", "Qiyam — Go Back to Sleep", result.dawudPattern.finalSleep.start)]
+      ? [
+          event(
+            "sleep",
+            "Qiyam / Tahajjud — Go Back to Sleep",
+            result.dawudPattern.finalSleep.start,
+          ),
+        ]
       : []),
   ];
 }

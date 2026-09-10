@@ -125,8 +125,11 @@ describe("Prophetic Night Segments interface", () => {
     expect(screen.getByText("Sleep · Part 6")).toBeInTheDocument();
     expect(screen.getByText("Part 1")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("tab", { name: "Prophetic Qiyam" }));
-    expect(screen.getByRole("heading", { name: "Prophetic Qiyam Timeline" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Prophetic Qiyam / Tahajjud" }));
+    expect(screen.getByText("PROPHETIC QIYAM / TAHAJJUD")).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Prophetic Qiyam / Tahajjud Timeline" }),
+    ).toBeInTheDocument();
     expect(
       screen.getByText(/did not restrict his night prayer to one fixed point/),
     ).toBeInTheDocument();

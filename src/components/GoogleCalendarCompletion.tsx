@@ -8,7 +8,7 @@ export function GoogleCalendarCompletion({ status }: { status: string }) {
     status === "connected" || Object.hasOwn(GOOGLE_MESSAGES, status) ? status : "CONNECTION_FAILED";
   const message =
     safeStatus === "connected"
-      ? "Google Calendar connected. You can close this window and return to your Qiyam plan."
+      ? "Google Calendar connected. You can close this window and return to your Qiyam / Tahajjud plan."
       : GOOGLE_MESSAGES[safeStatus as GoogleErrorCode];
   useEffect(() => {
     window.opener?.postMessage(

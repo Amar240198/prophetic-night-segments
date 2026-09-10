@@ -27,7 +27,7 @@ const result = calculateNightSegments({
 
 it("updates buffers, validates custom input and disables empty exports", () => {
   render(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
-  expect(screen.getByLabelText(/Qiyam — Wake Up/)).toBeChecked();
+  expect(screen.getByLabelText(/Qiyam \/ Tahajjud — Wake Up/)).toBeChecked();
   expect(screen.getByText(/01:45:00/)).toBeInTheDocument();
   fireEvent.change(screen.getByLabelText("Wake-up buffer"), { target: { value: "custom" } });
   const input = screen.getByLabelText("Custom wake-up buffer (minutes)");
@@ -57,10 +57,22 @@ it("downloads only selected events and updates the Dawud window", async () => {
     reader.onload = () => resolve(String(reader.result));
     reader.readAsText(blob);
   });
-  expect(contents).toContain("SUMMARY:Qiyam — Go Back to Sleep");
-  expect(contents).not.toContain("SUMMARY:Qiyam — Prayer Window");
+  expect(contents).toContain("SUMMARY:Qiyam / Tahajjud — Go Back to Sleep");
+  expect(contents).not.toContain("SUMMARY:Qiyam / Tahajjud — Prayer Window");
   expect(contents).not.toContain("SUMMARY:Sixth of the Night");
   rerender(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
   expect(screen.queryByLabelText(/Go Back to Sleep/)).not.toBeInTheDocument();
   expect(screen.getAllByRole("link", { hidden: true })).toHaveLength(3);
+});
+
+it("offers all six night duration checkboxes in boundary order", () => {
+  render(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
+  for (let part = 1; part <= 6; part++) {
+    const checkbox = screen.getByRole("checkbox", { name: new RegExp(`Night — Part ${part}`) });
+    expect(checkbox).not.toBeChecked();
+    fireEvent.click(checkbox);
+    expect(checkbox).toBeChecked();
+    expect(checkbox.closest("label")).toHaveTextContent(/ – /);
+  }
+  expect(screen.getByRole("checkbox", { name: /Final Sixth/ })).toBeInTheDocument();
 });

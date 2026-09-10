@@ -22,6 +22,9 @@ describe("calendar layer", () => {
     expect(events.map(({ id, start }) => [id, Date.parse(start)])).toEqual([
       ["wake", Date.parse("2026-01-02T01:45:00Z")],
       ["last-third", Date.parse(night.lastThird.start)],
+      ...night.boundaries
+        .slice(0, 6)
+        .map((boundary, index) => [`night-part-${index + 1}`, boundary.epochMilliseconds]),
       ["final-sixth", Date.parse(night.dawudPattern.finalSleep.start)],
       ["prayer", Date.parse(night.lastThird.start)],
       ["fajr", Date.parse(night.night.end)],
@@ -101,7 +104,7 @@ describe("calendar layer", () => {
     event.description = "Provider, test; \\ source\r\nBEGIN:VEVENT\n" + "夜 ﷺ".repeat(80);
     const ics = generateICS([event], "2026-01-01T12:00:00Z");
     expect(ics).toContain("DTSTAMP:20260101T120000Z");
-    expect(ics).toContain("SUMMARY:Qiyam — Wake Up");
+    expect(ics).toContain("SUMMARY:Qiyam / Tahajjud — Wake Up");
     expect(ics).not.toContain("DTEND:");
     expect(ics.match(/^BEGIN:VEVENT$/gm)).toHaveLength(1);
     expect(ics.replace(/\r\n /g, "")).toContain(

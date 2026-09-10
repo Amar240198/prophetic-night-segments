@@ -287,7 +287,7 @@ export function GoogleCalendarSection({
         setError(
           "Some events could not be added. Review the results below; retrying will skip events already created.",
         );
-      else setMessage("Your selected Qiyam plan is in your primary Google Calendar.");
+      else setMessage("Your selected Qiyam / Tahajjud plan is in your primary Google Calendar.");
     } catch {
       setError(
         "Unable to create calendar event. You can retry safely to check for events already created.",
@@ -477,7 +477,7 @@ export function GoogleCalendarSection({
               onClick={() => setReviewing(!reviewing)}
               aria-expanded={reviewing}
             >
-              Add Qiyam Plan to Calendar
+              Add Qiyam / Tahajjud Plan to Calendar
             </button>
             <button
               type="button"
@@ -492,8 +492,8 @@ export function GoogleCalendarSection({
             <div className="mt-4">
               <p className="text-sm text-[#9baca7]">
                 Choose events for your primary calendar. Wake time uses the buffer above. Boundary
-                markers last one minute; prayer windows retain their calculated duration. Optional
-                planning only.
+                markers last one minute; prayer windows and night parts retain their calculated
+                duration. Optional planning only.
               </p>
               <fieldset disabled={busy} className="mt-4 grid gap-2">
                 <legend className="mb-2 text-sm">Google Calendar events to add or remove</legend>

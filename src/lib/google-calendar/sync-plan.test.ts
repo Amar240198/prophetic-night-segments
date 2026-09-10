@@ -1,13 +1,20 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { expect, it, vi } from "vitest";
 import { calculateSyncNight, syncDates, validateSyncRequest } from "./sync-plan.server";
+import { NIGHT_PART_TITLES, type NightPartEventId } from "../calendar/buildCalendarEvents";
 import type { SyncRequest } from "./sync";
 
 const input: SyncRequest = {
   startDate: "2026-03-28",
   nights: 30,
   source: { kind: "london-unified" },
-  selected: ["last-third", "prayer", "final-sixth", "fajr"],
+  selected: [
+    "last-third",
+    "prayer",
+    "final-sixth",
+    "fajr",
+    ...(Object.keys(NIGHT_PART_TITLES) as NightPartEventId[]),
+  ],
   options: {
     wakeBufferMinutes: 15,
     dawudSelected: false,
@@ -30,6 +37,16 @@ it.each([
     source: "Test provider",
   });
   const events = await calculateSyncNight(input, date, load);
+  const parts = events.filter((event) => event.id.startsWith("night-part-"));
+  expect(parts).toHaveLength(6);
+  parts.forEach((part, index) => {
+    expect(Date.parse(part.start)).toBe(
+      maghrib.epochMilliseconds + (hours * 3_600_000 * index) / 6,
+    );
+    expect(Date.parse(part.end)).toBe(
+      maghrib.epochMilliseconds + (hours * 3_600_000 * (index + 1)) / 6,
+    );
+  });
   expect(fajr.epochMilliseconds - maghrib.epochMilliseconds).toBe(hours * 3_600_000);
   expect(Date.parse(events.find((e) => e.id === "last-third")!.start)).toBe(
     maghrib.epochMilliseconds + (hours * 3_600_000 * 2) / 3,

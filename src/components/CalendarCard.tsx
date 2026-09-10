@@ -66,7 +66,7 @@ export function CalendarCard({
       <h2 id="calendar-title" className="mt-3 font-serif text-3xl">
         Add to Calendar
       </h2>
-      <p className="mt-3 text-[#c8d4d0]">Plan tonight around Qiyam.</p>
+      <p className="mt-3 text-[#c8d4d0]">Plan tonight around Qiyam / Tahajjud.</p>
       <p className="mt-2 text-sm text-[#9baca7]">
         Suggested prayer window:{" "}
         {dawudSelected ? "Dāwūd pattern (Parts 4–5)" : "last third (Parts 5–6)"}. Times shown in{" "}
@@ -129,7 +129,7 @@ export function CalendarCard({
                 {!valid && event.id === "wake"
                   ? "Enter a valid buffer to preview"
                   : formatCalendarTime(event.start, event.timeZone)}
-                {event.id === "prayer" && ` – ${formatCalendarTime(event.end, event.timeZone)}`}
+                {event.start !== event.end && ` – ${formatCalendarTime(event.end, event.timeZone)}`}
               </span>
             </span>
           </label>

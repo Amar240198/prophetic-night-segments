@@ -1,18 +1,23 @@
 import { createAlarmPlan, type NightCalculationResult } from "@prophetic-night/night-engine";
-import { buildCalendarEvents, type CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
+import {
+  buildCalendarEvents,
+  NIGHT_PART_TITLES,
+  type CalendarEvent,
+} from "@/lib/calendar/buildCalendarEvents";
 
 export const GOOGLE_EVENT_TITLES = {
-  wake: "Qiyam — Wake for Prayer",
-  "last-third": "Qiyam — Last Third Begins",
-  "part-4": "Qiyam — Beginning of Part 4",
-  "part-5": "Qiyam — Beginning of Part 5",
+  ...NIGHT_PART_TITLES,
+  wake: "Qiyam / Tahajjud — Wake Up",
+  "last-third": "Qiyam / Tahajjud — Last Third Begins",
+  "part-4": "Qiyam / Tahajjud — Beginning of Part 4",
+  "part-5": "Qiyam / Tahajjud — Beginning of Part 5",
   "dawud-prayer": "Dāwūd Pattern — Prayer Window",
-  "part-6": "Qiyam — End Prayer / Beginning of Part 6",
+  "part-6": "Qiyam / Tahajjud — Go Back to Sleep",
   "fajr-preparation": "Prepare for Fajr",
   "first-adhan-reminder": "Wake before Fajr",
   fajr: "Fajr",
   "final-sixth": "Sixth of the Night — Final Sixth",
-  prayer: "Qiyam — Prayer Window",
+  prayer: "Qiyam / Tahajjud — Prayer Window",
 } as const;
 export type GoogleEventId = keyof typeof GOOGLE_EVENT_TITLES;
 const DAWUD_CONTEXT =
@@ -51,22 +56,31 @@ export function buildGooglePlan(
   return [
     make("wake", base[0]!.start, base[0]!.end, options.dawudSelected),
     make("last-third", result.lastThird.start),
-    ...alarms.map((alarm) =>
-      make(
-        alarm.id === "custom-before-fajr" ? "first-adhan-reminder" : (alarm.id as GoogleEventId),
-        alarm.instant,
-        alarm.instant,
-        alarm.id === "part-4" || alarm.id === "part-6",
-      ),
-    ),
-    make("dawud-prayer", result.dawudPattern.prayer.start, result.dawudPattern.prayer.end, true),
-    make("fajr", result.night.end),
+    ...base.filter((event) => Object.hasOwn(NIGHT_PART_TITLES, event.id)),
     make("final-sixth", result.dawudPattern.finalSleep.start),
     make(
       "prayer",
       options.dawudSelected ? result.dawudPattern.prayer.start : result.lastThird.start,
       options.dawudSelected ? result.dawudPattern.prayer.end : result.lastThird.end,
       options.dawudSelected,
+    ),
+    make("dawud-prayer", result.dawudPattern.prayer.start, result.dawudPattern.prayer.end, true),
+    ...alarms
+      .filter((alarm) => alarm.id !== "part-6")
+      .map((alarm) =>
+        make(
+          alarm.id === "custom-before-fajr" ? "first-adhan-reminder" : (alarm.id as GoogleEventId),
+          alarm.instant,
+          alarm.instant,
+          alarm.id === "part-4" || alarm.id === "part-6",
+        ),
+      ),
+    make("fajr", result.night.end),
+    make(
+      "part-6",
+      result.dawudPattern.finalSleep.start,
+      result.dawudPattern.finalSleep.start,
+      true,
     ),
   ];
 }

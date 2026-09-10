@@ -73,3 +73,32 @@ describe("Google plan payloads", () => {
     expect(validateSelectedEvents({ events: [base] })).toHaveLength(1);
   });
 });
+
+it.each([
+  ["2026-03-28T18:00:00Z", "2026-03-29T05:00:01Z"],
+  ["2026-10-24T17:00:00Z", "2026-10-25T06:00:00Z"],
+  ["2026-12-31T18:00:00Z", "2027-01-01T06:00:00Z"],
+])("exports six contiguous duration blocks from engine boundaries: %s", (maghrib, fajr) => {
+  const result = calculateNightSegments({ maghrib, fajr, timeZone: "Europe/London" });
+  const plan = buildGooglePlan(result, options);
+  const parts = plan.filter((event) => event.id.startsWith("night-part-"));
+  expect(parts).toHaveLength(6);
+  expect(parts[0]!.start).toBe(result.night.start);
+  expect(parts[5]!.end).toBe(result.night.end);
+  parts.forEach((part, index) => {
+    expect(part).toMatchObject({
+      id: `night-part-${index + 1}`,
+      title: `Night — Part ${index + 1}`,
+      start: result.boundaries[index]!.instant,
+      end: result.boundaries[index + 1]!.instant,
+    });
+    expect(Date.parse(part.end)).toBeGreaterThan(Date.parse(part.start));
+    if (index) expect(part.start).toBe(parts[index - 1]!.end);
+    expect(googleEventPayload(part).end.dateTime).toBe(part.end);
+  });
+  expect(validateSelectedEvents({ events: parts })).toHaveLength(6);
+  expect(plan.find((event) => event.id === "final-sixth")!.start).toBe(parts[5]!.start);
+  expect(
+    plan.filter((event) => event.title.startsWith("Qiyam / Tahajjud")).map((event) => event.id),
+  ).toEqual(["wake", "last-third", "prayer", "part-4", "part-5", "part-6"]);
+});

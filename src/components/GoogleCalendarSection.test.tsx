@@ -8,7 +8,7 @@ import { GoogleCalendarCompletion } from "./GoogleCalendarCompletion";
 const events = [
   {
     id: "last-third",
-    title: "Qiyam — Last Third Begins",
+    title: "Qiyam / Tahajjud — Last Third Begins",
     start: "2026-01-02T02:00:00Z",
     end: "2026-01-02T02:00:00Z",
     timeZone: "UTC",
@@ -86,7 +86,7 @@ it("requires explicit selection, submits only chosen events, and disconnects", a
   render(<GoogleCalendarSection events={events} valid />);
   expect(await screen.findByText("Connected as: user@example.com")).toBeInTheDocument();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }));
   expect(screen.getByRole("button", { name: "Add selected events (0)" })).toBeDisabled();
   fireEvent.click(screen.getByLabelText(/Fajr/));
   fireEvent.click(screen.getByRole("button", { name: "Add selected events (1)" }));
@@ -112,7 +112,9 @@ it("reports partial failures and preserves successful outcomes", async () => {
       ),
   );
   render(<GoogleCalendarSection events={events} valid />);
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   for (const checkbox of screen.getAllByRole("checkbox")) fireEvent.click(checkbox);
   fireEvent.click(screen.getByRole("button", { name: "Add selected events (2)" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("Some events could not be added");
@@ -129,7 +131,9 @@ it("requires reconnecting when Google rejects an expired token", async () => {
       .mockResolvedValueOnce(json({ error: { code: "SESSION_EXPIRED" } }, false)),
   );
   render(<GoogleCalendarSection events={events} valid />);
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   fireEvent.click(screen.getByLabelText(/Fajr/));
   fireEvent.click(screen.getByRole("button", { name: "Add selected events (1)" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("session has expired");
@@ -260,7 +264,9 @@ it("submits one explicit 30-night action with only selected types and reports pa
       syncOptions={syncOptions}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   fireEvent.click(screen.getByLabelText(/Fajr/));
   let finish!: (body: ReturnType<typeof json>) => void;
   fetchMock.mockImplementationOnce(
@@ -369,7 +375,9 @@ it.each([
         }}
       />,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+    );
     expect(screen.getByRole("group", { name: "Sync calendar for:" })).toBeInTheDocument();
     expect(screen.getAllByRole("radio")).toHaveLength(4);
     expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
@@ -415,7 +423,9 @@ it("restores Continuous from the session without confusing it with fixed 90 days
       }}
     />,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   expect(screen.getByRole("radio", { name: "Continuous" })).toBeChecked();
   expect(screen.getByRole("radio", { name: "90 days" })).not.toBeChecked();
   fireEvent.click(screen.getByRole("radio", { name: "30 days" }));
@@ -460,7 +470,9 @@ it("places explicit one-night removal beside add and submits only checked events
     );
   vi.stubGlobal("fetch", fetchMock);
   renderRemoval();
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   expect(screen.getByRole("button", { name: "Remove selected events (0)" })).toBeDisabled();
   fireEvent.click(screen.getByLabelText(/Fajr/));
   const remove = screen.getByRole("button", { name: "Remove selected events (1)" });
@@ -513,7 +525,9 @@ it.each([
       .mockReturnValueOnce(false)
       .mockReturnValueOnce(true);
     renderRemoval();
-    fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+    );
     fireEvent.click(screen.getByRole("radio", { name: label }));
     fireEvent.click(screen.getByLabelText(/Fajr/));
     const button = screen.getByRole("button", {
@@ -571,13 +585,15 @@ it("restores remaining saved selections after removal and never sends the remove
   vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(window, "confirm").mockReturnValue(true);
   renderRemoval();
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   expect(screen.getByLabelText(/Fajr/)).toBeChecked();
-  fireEvent.click(screen.getByLabelText(/Qiyam — Last Third Begins/));
+  fireEvent.click(screen.getByLabelText(/Qiyam \/ Tahajjud — Last Third Begins/));
   fireEvent.click(screen.getByRole("button", { name: "Remove from synced horizon (30 nights)" }));
   await screen.findByRole("list", { name: "Google Calendar removal results" });
   expect(screen.getByLabelText(/Fajr/)).not.toBeChecked();
-  expect(screen.getByLabelText(/Qiyam — Last Third Begins/)).toBeChecked();
+  expect(screen.getByLabelText(/Qiyam \/ Tahajjud — Last Third Begins/)).toBeChecked();
   fireEvent.click(screen.getByRole("button", { name: "Sync 30 nights to Google Calendar" }));
   await screen.findByRole("alert");
   expect(JSON.parse(fetchMock.mock.calls[2][1].body)).toMatchObject({
@@ -609,7 +625,9 @@ it("reports partial deletion failures and retries the captured removal scope aft
   vi.stubGlobal("fetch", fetchMock);
   vi.spyOn(window, "confirm").mockReturnValue(true);
   renderRemoval();
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   fireEvent.click(screen.getByLabelText(/Fajr/));
   fireEvent.click(screen.getByRole("button", { name: "Remove from synced horizon (30 nights)" }));
   expect(await screen.findByRole("alert")).toHaveTextContent("mappings were preserved");
@@ -638,7 +656,9 @@ it("reloads changed saved selections on focus so another tab's removal is respec
     );
   vi.stubGlobal("fetch", fetchMock);
   renderRemoval();
-  fireEvent.click(await screen.findByRole("button", { name: "Add Qiyam Plan to Calendar" }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
   expect(screen.getByLabelText(/Fajr/)).toBeChecked();
   await act(async () => {
     fireEvent.focus(window);

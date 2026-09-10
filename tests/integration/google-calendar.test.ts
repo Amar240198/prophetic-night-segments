@@ -25,6 +25,7 @@ vi.mock("@neondatabase/serverless", () => ({
 beforeAll(async () => {
   await db.exec(readFileSync("migrations/001_google_calendar_persistence.sql", "utf8"));
   await db.exec(readFileSync("migrations/002_google_calendar_event_mappings.sql", "utf8"));
+  await db.exec(readFileSync("migrations/003_google_calendar_night_parts.sql", "utf8"));
 }, 60_000);
 afterAll(async () => {
   await db.close();
@@ -301,7 +302,7 @@ describe("Google Calendar API routes", () => {
     const [url, init] = vi.mocked(fetch).mock.calls[0]!;
     expect(url).toContain("/calendars/primary/events?sendUpdates=none");
     const body = JSON.parse(String(init?.body));
-    expect(body.summary).toBe("Qiyam — Last Third Begins");
+    expect(body.summary).toBe("Qiyam / Tahajjud — Last Third Begins");
     expect(body.start).toEqual({ dateTime: event.start, timeZone: "Europe/London" });
     expect(body.end.dateTime).toBe("2026-03-29T00:46:00Z");
     expect(body.attendees).toBeUndefined();
@@ -1507,3 +1508,97 @@ describe("removal absence and deadline handling", () => {
     ).toEqual([{ count: 1 }]);
   });
 });
+
+import { NIGHT_PART_TITLES } from "../../src/lib/calendar/buildCalendarEvents";
+import type { GoogleEventId } from "../../src/lib/google-calendar/plan";
+const nightPartIds = Object.keys(NIGHT_PART_TITLES) as GoogleEventId[];
+
+it("adds and removes all six duration events through the one-night routes", async () => {
+  const service = removalService();
+  const cookie = await sessionCookie();
+  const parts = await calculateSyncNight(
+    { ...syncInput, selected: nightPartIds },
+    syncInput.startDate,
+  );
+  const response = await events(request("events", { cookie, body: { events: parts } }));
+  expect(response.status).toBe(200);
+  expect((await response.json()).outcomes).toEqual(
+    nightPartIds.map((id) => ({ id, status: "created" })),
+  );
+  for (const part of parts) {
+    const actual = service.stored.get(googleEventPayload(part).id)!;
+    expect(Date.parse(actual.start.dateTime)).toBe(Date.parse(part.start));
+    expect(Date.parse(actual.end.dateTime)).toBe(Date.parse(part.end));
+  }
+  const removed = await removeRequest({ scope: "night", events: parts }, cookie);
+  expect(removed.outcomes).toHaveLength(6);
+  expect(removed.outcomes.every((item) => item.status === "removed")).toBe(true);
+  expect(service.stored.size).toBe(0);
+});
+
+it.each([
+  [30, "fixed"],
+  [60, "fixed"],
+  [90, "fixed"],
+  [90, "continuous"],
+] as const)(
+  "syncs, repeats and removes six independent segments for %i %s nights",
+  async (nights, mode) => {
+    // Skip only the production request pacing delay against the in-memory Google service.
+    const originalSetTimeout = globalThis.setTimeout;
+    vi.stubGlobal(
+      "setTimeout",
+      (callback: (...args: unknown[]) => void, delay?: number, ...args: unknown[]) =>
+        originalSetTimeout(callback, delay === 300 ? 0 : delay, ...args),
+    );
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const input: SyncRequest = { ...syncInput, nights, mode, selected: nightPartIds };
+    const first = await runSync(input, cookie);
+    expect(first.syncedNights).toBe(nights);
+    expect(service.stored.size).toBe(nights * 6);
+    for (const date of syncDates(input.startDate, nights)) {
+      const expected = await calculateSyncNight(input, date);
+      for (const part of expected) {
+        const actual = [...service.stored.values()].find(
+          (item) =>
+            item.extendedProperties.private.localNight === date &&
+            item.extendedProperties.private.planEvent === part.id,
+        )!;
+        expect(Date.parse(actual.start.dateTime)).toBe(Date.parse(part.start));
+        expect(Date.parse(actual.end.dateTime)).toBe(Date.parse(part.end));
+      }
+    }
+    const clocks = [...service.stored.values()]
+      .filter((item) => item.extendedProperties.private.planEvent === "night-part-1")
+      .map((item) =>
+        Temporal.Instant.from(item.start.dateTime)
+          .toZonedDateTimeISO("Europe/London")
+          .toPlainTime()
+          .toString(),
+      );
+    expect(new Set(clocks).size).toBeGreaterThan(20);
+    const second = await runSync(input, cookie);
+    expect(second.outcomes.every((item: { status: string }) => item.status === "existing")).toBe(
+      true,
+    );
+    expect(service.inserts()).toBe(nights * 6);
+    const active = await readSession(request("session", { cookie }));
+    expect(
+      (
+        await db.query(
+          "SELECT selected_event_types FROM google_calendar_sync_preferences WHERE google_connection_id = $1",
+          [active.connectionId],
+        )
+      ).rows,
+    ).toEqual([{ selected_event_types: nightPartIds }]);
+    const removed = await removeRequest(
+      { scope: "horizon", startDate: input.startDate, nights, mode, selected: nightPartIds },
+      cookie,
+    );
+    expect(removed.outcomes).toHaveLength(nights * 6);
+    expect(removed.outcomes.every((item) => item.status === "removed")).toBe(true);
+    expect(service.stored.size).toBe(0);
+  },
+  60_000,
+);

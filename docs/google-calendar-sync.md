@@ -272,3 +272,21 @@ paces Google operations, and stops starting work on quota/authentication failure
 bounded deadline. Already-in-flight operations may finish. No new database migration,
 OAuth scope, cron, or background process is required. Production rollout still requires
 explicit authorization; implementation tests use isolated PostgreSQL and mocked Google calls.
+
+Calendar selections now include `night-part-1` through `night-part-6`, titled
+“Night — Part 1” through “Night — Part 6”. Each duration uses adjacent engine
+boundaries for that night's supplied Maghrib and following Fajr. The existing
+`final-sixth` marker remains separate. All six types support one-night add/remove,
+fixed 30/60/90-day sync and removal, and Continuous's initial 90-day sync, with
+saved selections and the existing idempotent mappings.
+
+User-facing Qiyam labels now read “Qiyam / Tahajjud”; existing IDs remain unchanged,
+including `part-6` for the Google “Go Back to Sleep” marker and `sleep` for ICS.
+
+Before running the updated mapped sync against a database, migration
+`003_google_calendar_night_parts.sql` is required: the existing mapping table's
+`event_type` check rejects the six new IDs. The transactional migration expands
+that whitelist, preserves existing rows and IDs, and does not change preferences
+(their event-type array has no whitelist). Migration 003 was applied and verified
+on the `sixth-of-the-night` Production database on 2026-09-10, before this release.
+Apply it separately to any other database still using the original whitelist.
