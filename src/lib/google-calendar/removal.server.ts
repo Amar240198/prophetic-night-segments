@@ -150,7 +150,14 @@ export async function removeCalendarEvents(
             if (stopCode) throw new GoogleCalendarError(stopCode);
             attemptedGoogle = Boolean(eventId);
             const status = eventId
-              ? await removeGoogleEvent(eventId, target.id, session.accessToken, target.date)
+              ? await removeGoogleEvent(
+                  eventId,
+                  target.id,
+                  session.accessToken,
+                  target.identity === "mapped"
+                    ? { kind: "mapped", localNight: target.date! }
+                    : { kind: "one-night" },
+                )
               : "absent";
             // Never forget a failed or uncertain Google deletion. Retry checks absence first.
             if (eventId && target.identity === "mapped")

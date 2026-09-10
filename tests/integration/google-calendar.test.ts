@@ -1029,6 +1029,35 @@ const horizonRemoval = (nights = 30, mode: "fixed" | "continuous" = "fixed"): Re
 });
 
 describe("safe Google Calendar removal", () => {
+  it("reproduces the production one-night add then remove flow with startDate", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const addResponse = await events(request("events", { cookie, body: { events: [event] } }));
+    expect(addResponse.status).toBe(200);
+    expect(await addResponse.json()).toEqual({
+      outcomes: [{ id: "last-third", status: "created" }],
+    });
+    const eventId = googleEventPayload(event).id;
+    const created = service.stored.get(eventId)!;
+    expect(created.extendedProperties.private.application).toBe("prophetic-night-segments");
+    expect(created.extendedProperties.private.planEvent).toBe("last-third");
+    expect(
+      (created.extendedProperties.private as Record<string, string>).localNight,
+    ).toBeUndefined();
+    expect(eventId).toMatch(/^[0-9a-f]{64}$/);
+
+    const result = await removeRequest(
+      { scope: "night", events: [event], startDate: "2026-03-01" },
+      cookie,
+    );
+    expect(result.outcomes).toEqual([
+      { id: "last-third", identity: "one-night", status: "removed" },
+      { id: "last-third", identity: "mapped", date: "2026-03-01", status: "absent" },
+    ]);
+    expect(service.deletes()).toBe(1);
+    expect(service.stored.has(eventId)).toBe(false);
+  });
+
   it("removes only the selected app-owned one-night event and repeats safely", async () => {
     const service = removalService();
     const cookie = await sessionCookie();

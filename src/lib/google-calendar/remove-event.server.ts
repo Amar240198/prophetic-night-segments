@@ -7,7 +7,7 @@ export async function removeGoogleEvent(
   eventId: string,
   type: GoogleEventId,
   accessToken: string,
-  localNight?: string,
+  ownership: { kind: "one-night" } | { kind: "mapped"; localNight: string },
 ): Promise<"removed" | "absent"> {
   if (!/^[0-9a-f]{64}$/.test(eventId)) throw new GoogleCalendarError("EVENT_NOT_OWNED", 409);
   const endpoint = `https://www.googleapis.com/calendar/v3/calendars/primary/events/${eventId}`;
@@ -29,8 +29,8 @@ export async function removeGoogleEvent(
     body.id !== eventId ||
     properties?.application !== "prophetic-night-segments" ||
     properties?.planEvent !== type ||
-    (localNight !== undefined
-      ? properties?.localNight !== localNight
+    (ownership.kind === "mapped"
+      ? properties?.localNight !== ownership.localNight
       : properties?.localNight !== undefined)
   )
     throw new GoogleCalendarError("EVENT_NOT_OWNED", 409);
