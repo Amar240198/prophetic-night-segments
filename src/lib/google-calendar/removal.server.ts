@@ -17,6 +17,7 @@ import {
 } from "./sync-database.server";
 import { removeGoogleEvent } from "./remove-event.server";
 import type { RemovalRequest, RemovalOutcome, RemovalResult } from "./removal";
+import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 
 export function validateRemovalRequest(value: unknown): RemovalRequest {
   try {
@@ -91,6 +92,7 @@ export async function removeCalendarEvents(
     id: GoogleEventId;
     identity: "one-night" | "mapped";
     eventId?: string;
+    event?: CalendarEvent;
   };
   let stopCode: GoogleErrorCode | undefined;
   try {
@@ -109,6 +111,7 @@ export async function removeCalendarEvents(
               id: event.id as GoogleEventId,
               identity: "one-night" as const,
               eventId: googleEventPayload(event).id,
+              event,
             },
             ...(input.startDate
               ? [
@@ -157,6 +160,9 @@ export async function removeCalendarEvents(
                   target.identity === "mapped"
                     ? { kind: "mapped", localNight: target.date! }
                     : { kind: "one-night" },
+                  target.identity === "one-night" && target.event
+                    ? { event: target.event }
+                    : undefined,
                 )
               : "absent";
             // Never forget a failed or uncertain Google deletion. Retry checks absence first.

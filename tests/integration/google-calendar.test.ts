@@ -578,7 +578,9 @@ function calendarService(failInsert = 0, failStatus = 500, ambiguous = false) {
     string,
     {
       start: { dateTime: string };
-      extendedProperties: { private: { localNight: string; planEvent: string } };
+      extendedProperties: {
+        private: { localNight?: string; planEvent: string; application?: string };
+      };
       etag: string;
       status: string;
     }
@@ -606,6 +608,16 @@ function calendarService(failInsert = 0, failStatus = 500, ambiguous = false) {
         });
       }
       if (target.hostname !== "www.googleapis.com") throw new Error("Unexpected test endpoint");
+      if (
+        target.pathname.endsWith("/events") &&
+        target.searchParams.has("privateExtendedProperty")
+      ) {
+        return json({
+          items: [...stored.entries()]
+            .map(([id, item]) => ({ id, ...item }))
+            .filter((item) => item.status !== "cancelled"),
+        });
+      }
       if (init?.method === "POST") {
         inserts++;
         const payload = JSON.parse(init.body as string);
@@ -1056,6 +1068,27 @@ describe("safe Google Calendar removal", () => {
     ]);
     expect(service.deletes()).toBe(1);
     expect(service.stored.has(eventId)).toBe(false);
+  });
+
+  it("finds an app-owned one-night event when recalculation changed its deterministic ID", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const original = { ...event, start: "2026-03-29T00:45:00Z", end: "2026-03-29T00:45:00Z" };
+    const recalculated = {
+      ...original,
+      start: "2026-03-29T00:46:00Z",
+      end: "2026-03-29T00:46:00Z",
+    };
+    expect((await events(request("events", { cookie, body: { events: [original] } }))).status).toBe(
+      200,
+    );
+    expect(googleEventPayload(original).id).not.toBe(googleEventPayload(recalculated).id);
+    const result = await removeRequest({ scope: "night", events: [recalculated] }, cookie);
+    expect(result.outcomes).toEqual([
+      { id: "last-third", identity: "one-night", status: "removed" },
+    ]);
+    expect(service.deletes()).toBe(1);
+    expect(service.stored.has(googleEventPayload(original).id)).toBe(false);
   });
 
   it("removes only the selected app-owned one-night event and repeats safely", async () => {
