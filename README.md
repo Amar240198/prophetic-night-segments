@@ -123,16 +123,19 @@ For local verification, run `pnpm dev`, calculate a night, select events in the 
 card, adjust the buffer, and download the file. Import it into Apple Calendar, Google
 Calendar (Settings → Import & export), or Outlook and compare the event dates/times
 with the card, using the same display timezone. Try the Dāwūd view and a custom buffer
-that crosses midnight. The Google Calendar disclosure provides one prefilled event
-link per selection; review and save each event there. No Google authentication is
-required for these links, though Google may require sign-in to save an event. These links
-and file downloads cover one night. The connected forward-sync action below offers 30, 60, or 90 nights. Live imports into all calendar
-clients require manual verification.
+that crosses midnight. ICS UIDs use app identities persisted in this browser's IndexedDB,
+so repeat exports retain identity when times, titles or display timezone change. Clearing
+browser storage loses this local registry. Import behavior belongs to the receiving
+calendar; importing a file does not give Sixth remote update/delete access. Unmanaged
+Google template links are no longer offered. Use the connected Google integration for
+verified managed additions, updates and removals. Live calendar imports need manual verification.
 
 ### Google Calendar forward sync
 
-The calendar card offers 30-, 60-, and 90-day horizons plus Continuous (an initial 90 nights with a persisted rolling preference) in one explicit server operation, with account-scoped event mappings, safe retries, partial results, and automatic post-OAuth UI recovery. Requires consolidated migration 002 after migration 001. See [calculation, API contract, limitations, and approved rollout steps](docs/google-calendar-sync.md). Continuous does not yet execute automatically; no cron or background worker is enabled.
+The calendar card offers 30-, 60-, and 90-day horizons plus Continuous (an initial 90 nights with a persisted rolling preference) in one explicit server operation, with account-scoped event mappings, safe retries, partial results, and automatic post-OAuth UI recovery. Requires migrations 001–004 in order. See [calculation, API contract, limitations, and approved rollout steps](docs/google-calendar-sync.md). Continuous does not yet execute automatically; no cron or background worker is enabled.
 
 Separate removal controls remove checked app-owned events from this night or a confirmed
 30/60/90-night horizon. Horizon removal updates saved event selections and preserves failed
-mappings for retry. Unrelated events are never deletion targets. No additional migration is required.
+mappings and tombstones for retry. The explicit remove-all control includes retired types
+from the persisted ledger within the chosen horizon. Unverified events remain untouched.
+Migration 004 must be applied before deploying this version; see the linked rollout steps.

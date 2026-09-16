@@ -1,9 +1,10 @@
+import { syncGoogleEvent } from "@/lib/google-calendar/sync-event.server";
+import { isServiceDate } from "@/lib/calendar/ownership";
 import { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
 import { acquireSyncLease, releaseSyncLease } from "@/lib/google-calendar/sync-database.server";
 import { GoogleCalendarError, type GoogleErrorCode } from "@/lib/google-calendar/errors";
 import {
-  insertGoogleEvent,
   readBoundedJson,
   validateSelectedEvents,
   type EventOutcome,
@@ -24,7 +25,13 @@ export async function POST(request: NextRequest) {
   try {
     assertSameOrigin(request);
     const session = await readSession(request);
-    const events = validateSelectedEvents(await readBoundedJson(request));
+    const input = await readBoundedJson(request);
+    const events = validateSelectedEvents(input);
+    const suppliedDate = (input as { startDate?: unknown }).startDate;
+    const serviceDate = suppliedDate ?? events[0]?.serviceDate;
+    if (!isServiceDate(serviceDate)) throw new GoogleCalendarError("SERVICE_DATE_REQUIRED");
+    if (events.some((event) => event.serviceDate && event.serviceDate !== serviceDate))
+      throw new GoogleCalendarError("IDENTITY_CONFLICT", 409);
     if (!(await acquireSyncLease(session.connectionId, owner)))
       throw new GoogleCalendarError("SYNC_IN_PROGRESS", 409);
     connection = session.connectionId;
@@ -40,7 +47,7 @@ export async function POST(request: NextRequest) {
           throw new GoogleCalendarError("SESSION_EXPIRED", 401);
         outcomes.push({
           id: event.id,
-          status: await insertGoogleEvent(event, session.accessToken),
+          status: await syncGoogleEvent({ ...session, operationOwner: owner }, serviceDate, event),
         });
       } catch (error) {
         const code = error instanceof GoogleCalendarError ? error.code : "EVENT_FAILED";

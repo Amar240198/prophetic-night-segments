@@ -1,3 +1,4 @@
+import "fake-indexeddb/auto";
 import { calculateNightSegments } from "@prophetic-night/night-engine";
 import { describe, expect, it } from "vitest";
 import { createCalendarContents, createNightEndSchedule } from "./ScheduleTools";
@@ -9,15 +10,15 @@ describe("calendar export", () => {
     timeZone: "UTC",
   });
 
-  it("includes an enabled Wake before Fajr reminder relative to following Fajr", () => {
-    const calendar = createCalendarContents(result, {}, 30);
+  it("includes an enabled Wake before Fajr reminder relative to following Fajr", async () => {
+    const calendar = await createCalendarContents(result, {}, 30);
 
     expect(calendar).toContain("SUMMARY:Wake before Fajr");
     expect(calendar).toContain("DTSTART:20260102T050000Z");
   });
 
-  it("omits the Wake before Fajr reminder when it is off", () => {
-    expect(createCalendarContents(result, {}, null)).not.toContain("Wake before Fajr");
+  it("omits the Wake before Fajr reminder when it is off", async () => {
+    expect(await createCalendarContents(result, {}, null)).not.toContain("Wake before Fajr");
   });
 
   it("orders the end-of-night schedule chronologically and retains coincident events", () => {

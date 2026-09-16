@@ -4,7 +4,7 @@ The integration is implemented, but Google sign-in requires your own Google Clou
 OAuth credentials. Without them the app shows a setup message and keeps `.ics`
 downloads available. No Google account is required to calculate a night or download a file.
 
-For persistent multi-night sync, see [selectable horizons and migration 002](google-calendar-sync.md).
+For managed calendar ownership, apply migrations 001–004 in order before deployment. See [immutable ownership and migration rollout](google-calendar-sync.md#rollout--migration-004-before-application-deployment).
 
 ## 1. Create a Google Cloud project
 
@@ -187,7 +187,7 @@ disconnect. They do not replace a live sign-in/import test with your own credent
 | Session has expired                 | Reconnect if the browser session expired or Google revoked access.                                                                     |
 | Unable to create calendar event     | Retry. Already-created events are detected; partial results are shown separately.                                                      |
 | Google Calendar is busy             | Wait, then retry. Google quota/rate-limit errors are not silently retried.                                                             |
-| Previously deleted event            | Restore it from Google Calendar's trash, or change its planned time. The app will not silently restore a deleted event.                |
+| Previously deleted event            | Restore it from Google Calendar's trash. Changing planned time cannot bypass its persistent tombstone.                                 |
 | Popup remains open                  | Return to the original window, use **Check connection**, then close the popup.                                                         |
 
 ## Security and prototype limitations
@@ -211,22 +211,23 @@ disconnect. They do not replace a live sign-in/import test with your own credent
   demand while the browser session is valid. No background jobs run. If Google does
   not provide a refresh token, the connection works only until access-token expiry;
   a previously stored refresh token for the same Google subject is preserved.
-- Disconnect deletes the connection and every associated browser session before
+- Disconnect clears credentials, sync preferences, leases and every associated browser session before
   attempting Google revocation. Existing calendar events remain. If revocation fails,
   users can remove the app through Google Account settings. Database failure returns
-  a safe error instead of claiming successful disconnection.
+  a safe error instead of claiming successful disconnection. The account identity, event ledger,
+  provider mappings and tombstones remain for safe reconnection.
 - Database records use absolute `timestamptz` expiries; prayer-time precision and DST
   handling are unchanged. Forward-sync event mappings are described in the sync guide; automatic rolling sync is not implemented.
 - Mutations require the configured same-origin `Origin` header. Requests are capped
-  at 64 KiB and eleven unique allowed event types, with validated explicit timestamps,
+  at 64 KiB and the current event registry's unique allowed types, with validated explicit timestamps,
   IANA timezone and a maximum 24-hour event span. Requests cannot supply attendees,
   arbitrary calendars, redirects, or Google API URLs. Events are private and send no
   invitations. Descriptions are HTML-escaped before reaching Google.
 - Google requires a positive duration: boundary reminders occupy **one minute**,
   while their starts remain exact. Prayer windows retain their exact calculated
   endpoints. Existing ICS precision and duration policies are unchanged.
-- The legacy one-night endpoint uses deterministic event IDs to make ordinary retries idempotent. Changed times create a
-  new event; the previous plan is not automatically edited/deleted. Events are inserted
+- One-night Add and horizon Sync share persistent app identities and provider IDs. Changed
+  times update the existing verified event with an ETag condition. Events are processed
   individually, so partial success is possible. The UI shows each outcome; retrying
   skips confirmed existing events. Google does not guarantee collision detection
   across its globally distributed service, so this is not a transactional guarantee.

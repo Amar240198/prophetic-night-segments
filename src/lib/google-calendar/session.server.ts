@@ -10,6 +10,8 @@ export const FLOW_COOKIE = "pns_google_oauth";
 export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.owned";
 export const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 export interface GoogleSession {
+  /** Internal lease fencing token, never accepted from the browser. */
+  operationOwner?: string;
   connectionId: string;
   subject: string;
   accessToken: string;

@@ -2,27 +2,39 @@ import { createHash } from "node:crypto";
 import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 import { GoogleCalendarError } from "./errors";
 import { googleEventPayload, googleFailure } from "./events.server";
-import { confirmEventMapping, reserveEventMapping } from "./sync-database.server";
+import {
+  assertCalendarWriteAccess,
+  confirmEventMapping,
+  reserveEventMapping,
+} from "./sync-database.server";
 import type { GoogleSession } from "./session.server";
+import { googleOwnershipAdapter, googleOwnershipMetadata } from "./ownership.server";
 
-export function syncEventIdentity(subject: string, date: string, type: string): string {
-  // Stable across new browser sessions and reconnection; does not include mutable prayer times.
-  return createHash("sha256")
-    .update(JSON.stringify(["pns-overlay-v1", subject, date, type]))
-    .digest("hex");
-}
+export { syncEventIdentity } from "./recovery.server";
+import { recoverGoogleMapping } from "./recovery.server";
+import { findOwnedEvent } from "@/lib/calendar/repository.server";
+
 const endpoint = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
 export async function syncGoogleEvent(
   session: GoogleSession,
   date: string,
   event: CalendarEvent,
 ): Promise<"created" | "updated" | "existing"> {
-  const id = await reserveEventMapping(
-    session.connectionId,
-    date,
-    event.id,
-    syncEventIdentity(session.subject, date, event.id),
-  );
+  if (event.serviceDate && event.serviceDate !== date)
+    throw new GoogleCalendarError("IDENTITY_CONFLICT", 409);
+  const persisted = await findOwnedEvent(session.connectionId, date, event.id);
+  const recovered = persisted ? undefined : await recoverGoogleMapping(session, date, event.id);
+  const mapping =
+    persisted ??
+    (await reserveEventMapping(session.connectionId, date, event.id, event.timeZone, recovered));
+  if (
+    mapping.provider !== "google" ||
+    mapping.calendarId !== "primary" ||
+    mapping.accountSubject !== session.subject ||
+    mapping.connectionId !== session.connectionId
+  )
+    throw new GoogleCalendarError("IDENTITY_CONFLICT", 409);
+  const id = mapping.providerEventId;
   const base = googleEventPayload(event);
   const hash = createHash("sha256")
     .update(JSON.stringify({ ...base, id }))
@@ -31,7 +43,7 @@ export async function syncGoogleEvent(
     ...base,
     id,
     extendedProperties: {
-      private: { ...base.extendedProperties.private, localNight: date, payloadHash: hash },
+      private: { ...googleOwnershipMetadata(mapping), payloadHash: hash },
     },
   };
   const headers = {
@@ -47,13 +59,23 @@ export async function syncGoogleEvent(
     });
   let existing = await call(`${endpoint}/${id}`);
   let status: "created" | "updated" | "existing";
+  if (existing.status === 404 && mapping.deletedAt)
+    throw new GoogleCalendarError("EVENT_DELETED", 409);
   if (existing.status === 404) {
+    await assertCalendarWriteAccess(session);
     const inserted = await call(`${endpoint}?sendUpdates=none`, {
       method: "POST",
       body: JSON.stringify(payload),
     });
     if (inserted.ok) {
-      await confirmEventMapping(session.connectionId, date, event.id, hash);
+      await confirmEventMapping(
+        session.connectionId,
+        date,
+        event.id,
+        hash,
+        event,
+        mapping.appEventId,
+      );
       return "created";
     }
     if (inserted.status !== 409) throw await googleFailure(inserted);
@@ -65,26 +87,25 @@ export async function syncGoogleEvent(
   const body = await existing.json();
   if (body.status === "cancelled") throw new GoogleCalendarError("EVENT_DELETED", 409);
   const properties = body.extendedProperties?.private;
-  if (
-    properties?.application !== "prophetic-night-segments" ||
-    properties?.planEvent !== event.id ||
-    properties?.localNight !== date
-  )
-    throw new GoogleCalendarError("EVENT_FAILED", 409);
-  if (properties.payloadHash === hash) status = "existing";
+  if (!googleOwnershipAdapter.verifyOwnership(body, mapping))
+    throw new GoogleCalendarError("EVENT_NOT_OWNED", 409);
+  if (properties?.payloadHash === hash && mapping.metadataVersion === 1) status = "existing";
   else {
-    if (typeof body.etag !== "string") throw new GoogleCalendarError("EVENT_FAILED", 409);
+    if (typeof body.etag !== "string" || !body.etag)
+      throw new GoogleCalendarError("EVENT_CHANGED", 409);
     // Patch only fields owned by the overlay; preserve unrelated calendar fields.
     const { id: _id, ...changes } = payload;
     void _id;
+    await assertCalendarWriteAccess(session);
     const updated = await call(`${endpoint}/${id}?sendUpdates=none`, {
       method: "PATCH",
       headers: { "If-Match": body.etag },
       body: JSON.stringify(changes),
     });
+    if (updated.status === 412) throw new GoogleCalendarError("EVENT_CHANGED", 409);
     if (!updated.ok) throw await googleFailure(updated);
     status = "updated";
   }
-  await confirmEventMapping(session.connectionId, date, event.id, hash);
+  await confirmEventMapping(session.connectionId, date, event.id, hash, event, mapping.appEventId);
   return status;
 }

@@ -1,5 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type { CalendarEvent } from "./buildCalendarEvents";
+import { CALENDAR_APPLICATION, isServiceDate } from "./ownership";
 
 /** iCalendar has whole-second precision; truncate subsecond engine boundaries only on export. */
 export function calendarInstant(value: string): string {
@@ -34,6 +35,15 @@ function foldLine(value: string): string {
 
 /** UTC instants avoid ambiguous wall times and do not require a VTIMEZONE component. */
 export function generateICS(events: readonly CalendarEvent[], generatedAt: string): string {
+  if (
+    events.some(
+      (event) =>
+        !event.appEventId ||
+        !/^[0-9a-f-]{36}$/.test(event.appEventId) ||
+        !isServiceDate(event.serviceDate),
+    )
+  )
+    throw new Error("Persist calendar export identities before serialization");
   return (
     [
       "BEGIN:VCALENDAR",
@@ -42,7 +52,11 @@ export function generateICS(events: readonly CalendarEvent[], generatedAt: strin
       "CALSCALE:GREGORIAN",
       ...events.flatMap((event) => [
         "BEGIN:VEVENT",
-        `UID:${escapeText(`${event.id}-${Temporal.Instant.from(event.start).epochMilliseconds}@prophetic-night-segments`)}`,
+        `UID:${event.appEventId}@${CALENDAR_APPLICATION}`,
+        `X-SIXTH-APPLICATION:${CALENDAR_APPLICATION}`,
+        "X-SIXTH-OWNERSHIP-VERSION:1",
+        `X-SIXTH-APP-EVENT-ID:${event.appEventId}`,
+        `X-SIXTH-SERVICE-DATE:${event.serviceDate}`,
         `DTSTAMP:${calendarInstant(generatedAt)}`,
         `DTSTART:${calendarInstant(event.start)}`,
         ...(Temporal.Instant.compare(event.end, event.start) > 0

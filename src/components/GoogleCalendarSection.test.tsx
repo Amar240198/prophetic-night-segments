@@ -13,6 +13,7 @@ const events = [
     end: "2026-01-02T02:00:00Z",
     timeZone: "UTC",
     description: "Planning aid",
+    serviceDate: "2026-01-01",
   },
   {
     id: "fajr",
@@ -21,6 +22,7 @@ const events = [
     end: "2026-01-02T06:00:00Z",
     timeZone: "UTC",
     description: "Planning aid",
+    serviceDate: "2026-01-01",
   },
 ];
 const json = (body: unknown, ok = true) => ({ ok, json: async () => body });
@@ -462,10 +464,7 @@ it("places explicit one-night removal beside add and submits only checked events
       json({
         scope: "night",
         nights: 1,
-        outcomes: [
-          { id: "fajr", identity: "one-night", status: "removed" },
-          { id: "fajr", identity: "mapped", date: "2026-03-01", status: "absent" },
-        ],
+        outcomes: [{ id: "fajr", identity: "mapped", date: "2026-03-01", status: "removed" }],
       }),
     );
   vi.stubGlobal("fetch", fetchMock);
@@ -481,11 +480,11 @@ it("places explicit one-night removal beside add and submits only checked events
   await screen.findByRole("list", { name: "Google Calendar removal results" });
   expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
     scope: "night",
-    events: [events[1]],
+    selected: ["fajr"],
     startDate: "2026-03-01",
   });
   expect(
-    screen.getByText("1 events removed; 1 already absent. 0 failed or were not attempted."),
+    screen.getByText("1 events removed; 0 already absent. 0 failed or were not attempted."),
   ).toBeInTheDocument();
 });
 
@@ -664,4 +663,55 @@ it("reloads changed saved selections on focus so another tab's removal is respec
     fireEvent.focus(window);
   });
   expect(screen.getByLabelText(/Fajr/)).not.toBeChecked();
+});
+
+it("explicitly confirms removal of all persisted types without depending on visible checkboxes", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(
+      json({ connected: true, configured: true, syncSelection: { selected: [], revision: null } }),
+    )
+    .mockResolvedValueOnce(
+      json({
+        scope: "horizon",
+        nights: 30,
+        syncSelection: { selected: [], revision: null },
+        outcomes: [
+          {
+            date: "2026-03-02",
+            id: "retired-planning-slot",
+            identity: "mapped",
+            status: "removed",
+          },
+        ],
+      }),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+  renderRemoval();
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
+  const button = screen.getByRole("button", {
+    name: "Remove all app events in horizon (30 nights)",
+  });
+  expect(button).toBeEnabled();
+  fireEvent.click(button);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(confirm).toHaveBeenCalledWith(expect.stringContaining("including retired event types"));
+  fireEvent.click(button);
+  await screen.findByRole("list", { name: "Google Calendar removal results" });
+  expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
+    scope: "horizon",
+    startDate: "2026-03-01",
+    nights: 30,
+    mode: "fixed",
+    selected: [],
+    allEventTypes: true,
+    selectionRevision: null,
+  });
+  expect(screen.getByText(/retired-planning-slot/)).toBeInTheDocument();
+  expect(
+    screen.getByText("1 events removed; 0 already absent. 0 failed or were not attempted."),
+  ).toHaveAttribute("role", "status");
 });

@@ -26,6 +26,7 @@ beforeAll(async () => {
   await db.exec(readFileSync("migrations/001_google_calendar_persistence.sql", "utf8"));
   await db.exec(readFileSync("migrations/002_google_calendar_event_mappings.sql", "utf8"));
   await db.exec(readFileSync("migrations/003_google_calendar_night_parts.sql", "utf8"));
+  await db.exec(readFileSync("migrations/004_calendar_ownership.sql", "utf8"));
 }, 60_000);
 afterAll(async () => {
   await db.close();
@@ -75,6 +76,13 @@ const event = {
   description: "Planning aid",
 };
 function request(path: string, options: { cookie?: string; body?: unknown; origin?: string } = {}) {
+  if (options.body && typeof options.body === "object" && "events" in options.body) {
+    const body = options.body as { events: Array<{ serviceDate?: string }>; startDate?: string };
+    options = {
+      ...options,
+      body: { ...body, startDate: body.startDate ?? body.events?.[0]?.serviceDate ?? "2026-03-28" },
+    };
+  }
   return new NextRequest(`${origin}/api/google-calendar/${path}`, {
     method: ["events", "disconnect", "sync", "remove"].includes(path) ? "POST" : "GET",
     headers: {
@@ -89,6 +97,12 @@ function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), { status });
 }
 beforeEach(async () => {
+  const realSetTimeout = globalThis.setTimeout;
+  vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+    callback: (...args: unknown[]) => void,
+    delay?: number,
+    ...args: unknown[]
+  ) => realSetTimeout(callback, delay === 300 ? 0 : delay, ...args)) as typeof setTimeout);
   await db.exec("TRUNCATE google_connections CASCADE");
   vi.stubEnv("DATABASE_URL", "postgresql://unused-test-only/test");
   vi.stubEnv("GOOGLE_CLIENT_ID", "test-client-id");
@@ -98,6 +112,7 @@ beforeEach(async () => {
   vi.stubGlobal("fetch", vi.fn());
 });
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
   vi.unstubAllEnvs();
 });
@@ -293,13 +308,12 @@ describe("Google Calendar API routes", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
   it("inserts only selected events into primary without attendees", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(json({ id: "new-event" }));
+    calendarService();
     const response = await events(
       request("events", { cookie: await sessionCookie(), body: { events: [event] } }),
     );
     expect(await response.json()).toEqual({ outcomes: [{ id: "last-third", status: "created" }] });
-    expect(fetch).toHaveBeenCalledOnce();
-    const [url, init] = vi.mocked(fetch).mock.calls[0]!;
+    const [url, init] = vi.mocked(fetch).mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(url).toContain("/calendars/primary/events?sendUpdates=none");
     const body = JSON.parse(String(init?.body));
     expect(body.summary).toBe("Qiyam / Tahajjud — Last Third Begins");
@@ -309,23 +323,17 @@ describe("Google Calendar API routes", () => {
     expect(body.visibility).toBe("private");
   });
   it("recognizes retries and does not overwrite existing events", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(json({}, 409))
-      .mockResolvedValueOnce(
-        json({
-          status: "confirmed",
-          extendedProperties: { private: { application: "prophetic-night-segments" } },
-        }),
-      );
-    const response = await events(
-      request("events", { cookie: await sessionCookie(), body: { events: [event] } }),
-    );
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    await events(request("events", { cookie, body: { events: [event] } }));
+    const response = await events(request("events", { cookie, body: { events: [event] } }));
     expect((await response.json()).outcomes[0].status).toBe("existing");
-    expect(vi.mocked(fetch).mock.calls[1]![1]?.method).toBeUndefined();
+    expect(service.inserts()).toBe(1);
+    expect(service.patches()).toBe(0);
   });
   it("does not claim a deleted duplicate still exists", async () => {
     vi.mocked(fetch)
-      .mockResolvedValueOnce(json({}, 409))
+      .mockResolvedValueOnce(json({ items: [] }))
       .mockResolvedValueOnce(json({ status: "cancelled" }));
     const response = await events(
       request("events", { cookie: await sessionCookie(), body: { events: [event] } }),
@@ -355,9 +363,7 @@ describe("Google Calendar API routes", () => {
     if (status === 401) expect(response.cookies.get(SESSION_COOKIE)?.maxAge).toBe(0);
   });
   it("reports partial success and hides internal network errors", async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(json({}))
-      .mockRejectedValueOnce(new Error("internal private provider failure"));
+    calendarService(2);
     const response = await events(
       request("events", {
         cookie: await sessionCookie(),
@@ -482,7 +488,13 @@ describe("persistent credentials", () => {
     const second = await sessionCookie();
     vi.mocked(fetch).mockRejectedValueOnce(new Error("offline"));
     expect((await disconnect(request("disconnect", { cookie: first }))).status).toBe(200);
-    expect((await db.query("SELECT * FROM google_connections")).rows).toHaveLength(0);
+    expect(
+      (
+        await db.query(
+          "SELECT encrypted_access_token, encrypted_refresh_token FROM google_connections",
+        )
+      ).rows,
+    ).toEqual([{ encrypted_access_token: null, encrypted_refresh_token: null }]);
     expect((await db.query("SELECT * FROM browser_sessions")).rows).toHaveLength(0);
     expect((await session(request("session", { cookie: second }))).status).toBe(401);
   });
@@ -578,9 +590,17 @@ function calendarService(failInsert = 0, failStatus = 500, ambiguous = false) {
   const stored = new Map<
     string,
     {
+      id: string;
+      summary: string;
+      end: { dateTime: string };
       start: { dateTime: string };
       extendedProperties: {
-        private: { localNight?: string; planEvent: string; application?: string };
+        private: {
+          [key: string]: string | undefined;
+          localNight?: string;
+          planEvent: string;
+          application?: string;
+        };
       };
       etag: string;
       status: string;
@@ -930,7 +950,11 @@ describe("selectable and continuous sync horizons", () => {
         },
       );
       expect(
-        (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+          )
+        ).rows,
       ).toEqual([{ count: 90 }]);
     },
     50_000,
@@ -1050,22 +1074,21 @@ describe("safe Google Calendar removal", () => {
     expect(await addResponse.json()).toEqual({
       outcomes: [{ id: "last-third", status: "created" }],
     });
-    const eventId = googleEventPayload(event).id;
+    const eventId = service.stored.keys().next().value!;
     const created = service.stored.get(eventId)!;
     expect(created.extendedProperties.private.application).toBe("prophetic-night-segments");
     expect(created.extendedProperties.private.planEvent).toBe("last-third");
-    expect(
-      (created.extendedProperties.private as Record<string, string>).localNight,
-    ).toBeUndefined();
+    expect((created.extendedProperties.private as Record<string, string>).localNight).toBe(
+      "2026-03-28",
+    );
     expect(eventId).toMatch(/^[0-9a-f]{64}$/);
 
     const result = await removeRequest(
-      { scope: "night", events: [event], startDate: "2026-03-01" },
+      { scope: "night", events: [event], startDate: "2026-03-28" },
       cookie,
     );
     expect(result.outcomes).toEqual([
-      { id: "last-third", identity: "one-night", status: "removed" },
-      { id: "last-third", identity: "mapped", date: "2026-03-01", status: "absent" },
+      { id: "last-third", identity: "mapped", date: "2026-03-28", status: "removed" },
     ]);
     expect(service.deletes()).toBe(1);
     expect(service.stored.has(eventId)).toBe(false);
@@ -1086,7 +1109,7 @@ describe("safe Google Calendar removal", () => {
     expect(googleEventPayload(original).id).not.toBe(googleEventPayload(recalculated).id);
     const result = await removeRequest({ scope: "night", events: [recalculated] }, cookie);
     expect(result.outcomes).toEqual([
-      { id: "last-third", identity: "one-night", status: "removed" },
+      { id: "last-third", identity: "mapped", date: "2026-03-28", status: "removed" },
     ]);
     expect(service.deletes()).toBe(1);
     expect(service.stored.has(googleEventPayload(original).id)).toBe(false);
@@ -1101,10 +1124,14 @@ describe("safe Google Calendar removal", () => {
     await events(request("events", { cookie, body: { events: [other] } }));
     const input: RemovalRequest = { scope: "night", events: [event] };
     expect((await removeRequest(input, cookie)).outcomes).toEqual([
-      { id: "last-third", identity: "one-night", status: "removed" },
+      { id: "last-third", identity: "mapped", date: "2026-03-28", status: "removed" },
     ]);
     expect(service.deletes()).toBe(1);
-    expect(service.stored.has(googleEventPayload(other).id)).toBe(true);
+    expect(
+      [...service.stored.values()].some(
+        (item) => item.extendedProperties.private.planEvent === "fajr",
+      ),
+    ).toBe(true);
     expect((await removeRequest(input, cookie)).outcomes[0]!.status).toBe("absent");
     expect(service.deletes()).toBe(1);
   });
@@ -1112,7 +1139,10 @@ describe("safe Google Calendar removal", () => {
   it.each([404, 410, "cancelled"] as const)(
     "treats an already-deleted one-night event (%s) as absent",
     async (status) => {
+      calendarService();
       const cookie = await sessionCookie();
+      await events(request("events", { cookie, body: { events: [event] } }));
+      vi.mocked(fetch).mockReset();
       vi.mocked(fetch).mockResolvedValue(
         status === "cancelled" ? json({ status }) : json({}, status),
       );
@@ -1126,8 +1156,11 @@ describe("safe Google Calendar removal", () => {
   it.each(["application", "planEvent", "id", "etag"])(
     "refuses one-night deletion with invalid %s",
     async (field) => {
+      const service = calendarService();
       const cookie = await sessionCookie();
-      const payload = { ...googleEventPayload(event), status: "confirmed", etag: '"v1"' };
+      await events(request("events", { cookie, body: { events: [event] } }));
+      const payload = service.stored.values().next().value!;
+      vi.mocked(fetch).mockClear();
       if (field === "application" || field === "planEvent")
         payload.extendedProperties.private[field] = "foreign";
       else if (field === "id") payload.id = "foreign";
@@ -1183,7 +1216,7 @@ describe("safe Google Calendar removal", () => {
       expect(
         (
           await db.query(
-            "SELECT event_type, count(*)::int AS count FROM google_calendar_event_mappings GROUP BY event_type ORDER BY event_type",
+            "SELECT event_type, count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL GROUP BY event_type ORDER BY event_type",
           )
         ).rows,
       ).toEqual([
@@ -1262,7 +1295,11 @@ describe("safe Google Calendar removal", () => {
     expect(result.syncSelection).toEqual({ selected: [], revision: null });
     expect(await readSyncPreference(active.connectionId)).toBeNull();
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+        )
+      ).rows,
     ).toEqual([{ count: 0 }]);
   });
 
@@ -1280,7 +1317,7 @@ describe("safe Google Calendar removal", () => {
       expect(
         (
           await db.query(
-            "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE event_type = 'final-sixth'",
+            "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE event_type = 'final-sixth' AND deleted_at IS NULL",
           )
         ).rows,
       ).toEqual([{ count: 1 }]);
@@ -1304,7 +1341,11 @@ describe("safe Google Calendar removal", () => {
     );
     expect((await removeRequest(horizonRemoval(), cookie)).outcomes[0]!.status).toBe("failed");
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+        )
+      ).rows,
     ).toEqual([{ count: 1 }]);
     expect(
       (await removeRequest(horizonRemoval(), cookie)).outcomes.every(
@@ -1313,7 +1354,11 @@ describe("safe Google Calendar removal", () => {
     ).toBe(true);
     expect(service.deletes()).toBe(1);
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+        )
+      ).rows,
     ).toEqual([{ count: 0 }]);
   });
 
@@ -1331,7 +1376,11 @@ describe("safe Google Calendar removal", () => {
     });
     expect(service.deletes()).toBe(0);
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+        )
+      ).rows,
     ).toEqual([{ count: 1 }]);
   });
 
@@ -1344,7 +1393,7 @@ describe("safe Google Calendar removal", () => {
     );
     const input: RemovalRequest = { scope: "night", startDate: "2026-03-01", events: [event] };
     const result = await removeRequest(input, cookie);
-    expect(result.outcomes.map((item) => item.status)).toEqual(["absent", "removed"]);
+    expect(result.outcomes.map((item) => item.status)).toEqual(["removed"]);
     expect(service.stored.size).toBe(1);
     expect((await readSyncSelection(active.connectionId)).selected).toEqual(["last-third"]);
   });
@@ -1366,7 +1415,7 @@ describe("safe Google Calendar removal", () => {
       { startDate: "2026-02-30" },
       { selected: [] },
       { selected: ["fajr", "fajr"] },
-      { selected: ["foreign"] },
+      { selected: ["invalid/type"] },
       { scope: "all" },
       { selectionRevision: 123 },
     ]) {
@@ -1402,7 +1451,9 @@ describe("safe Google Calendar removal", () => {
     expect(service.deletes()).toBeLessThanOrEqual(3);
     expect(result.outcomes.some((item) => item.code === "RATE_LIMITED")).toBe(true);
     const remaining = (
-      await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")
+      await db.query(
+        "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+      )
     ).rows[0]!.count;
     expect(remaining).toBe(service.stored.size);
     expect(remaining).toBeGreaterThanOrEqual(4);
@@ -1443,13 +1494,17 @@ describe("removal persistence failures", () => {
       cookie,
     );
     await db.exec(`CREATE FUNCTION reject_test_mapping_delete() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'test failure'; END $$;
-      CREATE TRIGGER reject_test_mapping_delete BEFORE DELETE ON google_calendar_event_mappings FOR EACH ROW EXECUTE FUNCTION reject_test_mapping_delete();`);
+      CREATE TRIGGER reject_test_mapping_delete BEFORE UPDATE ON google_calendar_event_mappings FOR EACH ROW EXECUTE FUNCTION reject_test_mapping_delete();`);
     try {
       const result = await removeRequest(horizonRemoval(), cookie);
       expect(result.outcomes[0]).toMatchObject({ status: "failed", code: "REMOVE_FAILED" });
       expect(service.stored.size).toBe(0);
       expect(
-        (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+          )
+        ).rows,
       ).toEqual([{ count: 1 }]);
     } finally {
       await db.exec(
@@ -1463,7 +1518,11 @@ describe("removal persistence failures", () => {
     ).toBe(true);
     expect(service.deletes()).toBe(1);
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+        )
+      ).rows,
     ).toEqual([{ count: 0 }]);
   });
 });
@@ -1482,7 +1541,11 @@ describe("removal absence and deadline handling", () => {
       expect(result.outcomes[0]!.status).toBe("absent");
       expect(service.deletes()).toBe(1);
       expect(
-        (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+        (
+          await db.query(
+            "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+          )
+        ).rows,
       ).toEqual([{ count: 0 }]);
     },
   );
@@ -1504,7 +1567,11 @@ describe("removal absence and deadline handling", () => {
     expect(result.outcomes.every((item) => item.code === "REMOVE_INCOMPLETE")).toBe(true);
     expect(service.deletes()).toBe(0);
     expect(
-      (await db.query("SELECT count(*)::int AS count FROM google_calendar_event_mappings")).rows,
+      (
+        await db.query(
+          "SELECT count(*)::int AS count FROM google_calendar_event_mappings WHERE deleted_at IS NULL",
+        )
+      ).rows,
     ).toEqual([{ count: 1 }]);
   });
 });
@@ -1526,7 +1593,9 @@ it("adds and removes all six duration events through the one-night routes", asyn
     nightPartIds.map((id) => ({ id, status: "created" })),
   );
   for (const part of parts) {
-    const actual = service.stored.get(googleEventPayload(part).id)!;
+    const actual = [...service.stored.values()].find(
+      (item) => item.extendedProperties.private.planEvent === part.id,
+    )!;
     expect(Date.parse(actual.start.dateTime)).toBe(Date.parse(part.start));
     expect(Date.parse(actual.end.dateTime)).toBe(Date.parse(part.end));
   }
@@ -1602,3 +1671,705 @@ it.each([
   },
   60_000,
 );
+
+import { calculateNightSegments } from "@prophetic-night/night-engine";
+import { buildGooglePlan } from "../../src/lib/google-calendar/plan";
+import { findOwnedEvent } from "../../src/lib/calendar/repository.server";
+import { googleOwnershipMetadata } from "../../src/lib/google-calendar/ownership.server";
+import { removeGoogleEvent } from "../../src/lib/google-calendar/remove-event.server";
+import { recoverGoogleMapping } from "../../src/lib/google-calendar/recovery.server";
+
+const ownershipOptions = {
+  wakeBufferMinutes: 15,
+  dawudSelected: true,
+  prayerSource: "Supplied test timetable",
+  fajrPreparationMinutes: 20,
+  firstAdhanMinutes: 30,
+};
+
+describe("permanent Maghrib service-date ownership", () => {
+  it.each([
+    ["2026-01-01", "2026-01-01T18:00:00Z", "2026-01-02T06:00:00Z", "UTC"],
+    ["2026-03-28", "2026-03-28T18:00:00Z", "2026-03-29T06:00:00+01:00", "Europe/London"],
+    ["2026-10-24", "2026-10-24T18:00:00+01:00", "2026-10-25T06:00:00Z", "Europe/London"],
+    ["2026-12-31", "2026-12-31T18:00:00+05:45", "2027-01-01T06:00:00+05:45", "Asia/Kathmandu"],
+  ])(
+    "preserves %s for every event before/after midnight and through DST",
+    async (date, maghrib, fajr, timeZone) => {
+      const service = removalService();
+      const cookie = await sessionCookie();
+      const night = calculateNightSegments({ maghrib, fajr, timeZone });
+      const before = structuredClone(night);
+      const plan = buildGooglePlan(night, ownershipOptions);
+      expect(plan.every((item) => item.serviceDate === date)).toBe(true);
+      expect(
+        plan.some(
+          (item) =>
+            Temporal.Instant.from(item.start)
+              .toZonedDateTimeISO(timeZone)
+              .toPlainDate()
+              .toString() === date,
+        ),
+      ).toBe(true);
+      expect(
+        plan.some(
+          (item) =>
+            Temporal.Instant.from(item.start)
+              .toZonedDateTimeISO(timeZone)
+              .toPlainDate()
+              .toString() !== date,
+        ),
+      ).toBe(true);
+      const response = await events(
+        request("events", { cookie, body: { startDate: date, events: plan } }),
+      );
+      expect(
+        (await response.json()).outcomes.every(
+          (item: { status: string }) => item.status === "created",
+        ),
+      ).toBe(true);
+      const rows = (
+        await db.query(
+          "SELECT app_event_id, service_date::text, service_timezone FROM app_calendar_events",
+        )
+      ).rows;
+      expect(rows).toHaveLength(plan.length);
+      expect(
+        rows.every((row) => row.service_date === date && row.service_timezone === timeZone),
+      ).toBe(true);
+      const privateMetadata = [...service.stored.values()].map(
+        (item) => item.extendedProperties.private,
+      );
+      expect(new Set(privateMetadata.map((p) => p.appEventId)).size).toBe(plan.length);
+      expect(
+        privateMetadata.every((p) => p.localNight === date && p.ownershipVersion === "1"),
+      ).toBe(true);
+      const removed = await removeRequest(
+        { scope: "night", selected: plan.map((item) => item.id), startDate: date },
+        cookie,
+      );
+      expect(removed.outcomes.every((item) => item.status === "removed")).toBe(true);
+      expect(service.stored.size).toBe(0);
+      expect(night).toEqual(before);
+      expect(
+        (
+          await db.query(
+            "SELECT count(*)::int AS n FROM google_calendar_event_mappings WHERE deleted_at IS NOT NULL",
+          )
+        ).rows[0]!.n,
+      ).toBe(plan.length);
+    },
+  );
+
+  it("updates the same persisted event across title, timestamp, timezone and version changes", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const original = { ...event, serviceDate: "2026-03-28" };
+    await events(request("events", { cookie, body: { events: [original] } }));
+    const mapping = (await findOwnedEvent(active.connectionId, original.serviceDate, event.id))!;
+    const changed = {
+      ...original,
+      title: "A future Qiyam display label",
+      start: "2026-03-29T02:03:04Z",
+      end: "2026-03-29T03:03:04Z",
+      timeZone: "America/New_York",
+    };
+    expect(await syncGoogleEvent(active, original.serviceDate, changed)).toBe("updated");
+    expect(await syncGoogleEvent(active, original.serviceDate, changed)).toBe("existing");
+    expect(service.stored.size).toBe(1);
+    expect(
+      (await findOwnedEvent(active.connectionId, original.serviceDate, event.id))!.appEventId,
+    ).toBe(mapping.appEventId);
+    expect(service.stored.get(mapping.providerEventId)!.summary).toBe(changed.title);
+    expect(
+      (await db.query("SELECT service_date::text, service_timezone FROM app_calendar_events")).rows,
+    ).toEqual([{ service_date: original.serviceDate, service_timezone: "Europe/London" }]);
+    // A new browser/session and rebuilt plan do not reconstruct the old timestamp.
+    const newCookie = await sessionCookie();
+    expect(
+      (
+        await removeRequest(
+          { scope: "night", selected: [event.id], startDate: original.serviceDate },
+          newCookie,
+        )
+      ).outcomes[0]!.status,
+    ).toBe("removed");
+  });
+
+  it("never updates or deletes identical manual or other-application events", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    await events(request("events", { cookie, body: { events: [event] } }));
+    const original = structuredClone(service.stored.values().next().value!);
+    service.stored.set("manual", {
+      ...original,
+      id: "manual",
+      extendedProperties: { private: { planEvent: event.id } },
+    });
+    service.stored.set("another-app", {
+      ...original,
+      id: "another-app",
+      extendedProperties: { private: { application: "another-app", planEvent: event.id } },
+    });
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-28", { ...event, title: "Changed by app" });
+    await removeRequest({ scope: "night", selected: [event.id], startDate: "2026-03-28" }, cookie);
+    expect(service.stored.get("manual")!.summary).toBe(original.summary);
+    expect(service.stored.get("another-app")!.summary).toBe(original.summary);
+    expect(service.stored.size).toBe(2);
+  });
+
+  it.each([
+    "application",
+    "appEventId",
+    "ownershipVersion",
+    "ownershipProof",
+    "connectionId",
+    "localNight",
+  ])("blocks both update and deletion when %s changes", async (field) => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-28", event);
+    service.stored.values().next().value!.extendedProperties.private[field] = "unverified";
+    await expect(
+      syncGoogleEvent(active, "2026-03-28", { ...event, title: "New title" }),
+    ).rejects.toMatchObject({ code: "EVENT_NOT_OWNED" });
+    expect(
+      (
+        await removeRequest(
+          { scope: "night", selected: [event.id], startDate: "2026-03-28" },
+          cookie,
+        )
+      ).outcomes[0],
+    ).toMatchObject({ status: "failed", code: "EVENT_NOT_OWNED" });
+    expect(service.patches()).toBe(0);
+    expect(service.deletes()).toBe(0);
+  });
+
+  it("isolates connections, provider accounts and calendars, even with copied metadata", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-28", event);
+    const mapping = (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!;
+    const calls = vi.mocked(fetch).mock.calls.length;
+    for (const changed of [{ connectionId: randomUUID() }, { subject: "account-b" }])
+      await expect(removeGoogleEvent(mapping, { ...active, ...changed })).rejects.toMatchObject({
+        code: "EVENT_NOT_OWNED",
+      });
+    for (const changed of [{ calendarId: "another-calendar" }, { provider: "microsoft" as const }])
+      await expect(removeGoogleEvent({ ...mapping, ...changed }, active)).rejects.toMatchObject({
+        code: "EVENT_NOT_OWNED",
+      });
+    expect(vi.mocked(fetch).mock.calls.length).toBe(calls);
+    expect(service.deletes()).toBe(0);
+  });
+
+  it("retains event identities across disconnect and reconnect without retaining credentials", async () => {
+    const service = removalService();
+    const first = await sessionCookie();
+    const active = await readSession(request("session", { cookie: first }));
+    await syncGoogleEvent(active, "2026-03-28", event);
+    const original = (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!;
+    await disconnect(request("disconnect", { cookie: first }));
+    expect(
+      (
+        await db.query(
+          "SELECT encrypted_access_token, encrypted_refresh_token FROM google_connections",
+        )
+      ).rows,
+    ).toEqual([{ encrypted_access_token: null, encrypted_refresh_token: null }]);
+    await expect(
+      syncGoogleEvent(active, "2026-03-28", { ...event, title: "Disconnected write" }),
+    ).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+    const second = await sessionCookie();
+    const reconnected = await readSession(request("session", { cookie: second }));
+    expect(reconnected.connectionId).toBe(active.connectionId);
+    expect(
+      (await findOwnedEvent(reconnected.connectionId, "2026-03-28", event.id))!.appEventId,
+    ).toBe(original.appEventId);
+    expect(
+      (
+        await removeRequest(
+          { scope: "night", selected: [event.id], startDate: "2026-03-28" },
+          second,
+        )
+      ).outcomes[0]!.status,
+    ).toBe("removed");
+    expect(service.deletes()).toBe(1);
+  });
+
+  it("enforces immutable service dates and account bindings in the database", async () => {
+    calendarService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-28", event);
+    for (const sql of [
+      "UPDATE app_calendar_events SET service_date = '2026-03-29'",
+      "UPDATE app_calendar_events SET app_event_id = gen_random_uuid()",
+      "UPDATE app_calendar_events SET connection_id = gen_random_uuid()",
+      "UPDATE app_calendar_events SET service_timezone = 'UTC'",
+      "UPDATE google_calendar_event_mappings SET local_night = '2026-03-29'",
+      "UPDATE google_calendar_event_mappings SET google_event_id = repeat('b', 64)",
+    ])
+      await expect(db.exec(sql)).rejects.toThrow(/immutable/);
+    await expect(
+      syncGoogleEvent(active, "2026-03-29", { ...event, serviceDate: "2026-03-28" }),
+    ).rejects.toMatchObject({ code: "IDENTITY_CONFLICT" });
+    expect((await db.query("SELECT service_date::text FROM app_calendar_events")).rows).toEqual([
+      { service_date: "2026-03-28" },
+    ]);
+  });
+
+  it("does not resurrect deleted events by recalculating a different time", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-28", event);
+    await removeRequest({ scope: "night", selected: [event.id], startDate: "2026-03-28" }, cookie);
+    await expect(
+      syncGoogleEvent(active, "2026-03-28", {
+        ...event,
+        start: "2026-03-29T03:00:00Z",
+        end: "2026-03-29T03:00:00Z",
+      }),
+    ).rejects.toMatchObject({ code: "EVENT_DELETED" });
+    expect(service.inserts()).toBe(1);
+  });
+
+  it("does not delete the adjacent night or unknown unversioned one-night exports", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-27", event);
+    const legacy = googleEventPayload(event);
+    service.stored.set(legacy.id, { ...legacy, etag: '"v1"', status: "confirmed" });
+    expect(
+      (
+        await removeRequest(
+          { scope: "night", selected: [event.id], startDate: "2026-03-28" },
+          cookie,
+        )
+      ).outcomes[0]!.status,
+    ).toBe("absent");
+    expect(service.deletes()).toBe(0);
+    expect(service.stored.size).toBe(2);
+  });
+
+  it("recovers positively verified legacy sync events without reconstructing original times", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const legacyId = syncEventIdentity(active.subject, "2026-03-28", event.id);
+    service.stored.set(legacyId, {
+      ...googleEventPayload(event),
+      id: legacyId,
+      etag: '"v1"',
+      status: "confirmed",
+      extendedProperties: {
+        private: {
+          application: "prophetic-night-segments",
+          planEvent: event.id,
+          localNight: "2026-03-28",
+        },
+      },
+    });
+    const result = await removeRequest(
+      { scope: "night", selected: [event.id], startDate: "2026-03-28" },
+      cookie,
+    );
+    expect(result.outcomes[0]!.status).toBe("removed");
+    expect(service.inserts()).toBe(0);
+    expect(
+      (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!.providerEventId,
+    ).toBe(legacyId);
+  });
+
+  it("recovers signed provider metadata after loss of a mapping", async () => {
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await syncGoogleEvent(active, "2026-03-28", event);
+    const original = (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!;
+    await db.exec("DELETE FROM google_calendar_event_mappings");
+    expect(await syncGoogleEvent(active, "2026-03-28", event)).toBe("existing");
+    expect((await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!.appEventId).toBe(
+      original.appEventId,
+    );
+    expect(service.inserts()).toBe(1);
+  });
+
+  it("checks every recovery page and refuses ambiguous identities", async () => {
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const base = {
+      appEventId: randomUUID(),
+      ownerApplication: "prophetic-night-segments" as const,
+      ownershipVersion: 1 as const,
+      connectionId: active.connectionId,
+      serviceDate: "2026-03-28",
+      eventKind: event.id,
+      serviceTimeZone: null,
+      provider: "google" as const,
+      accountSubject: active.subject,
+      calendarId: "primary",
+      providerEventId: "a".repeat(64),
+      metadataVersion: 1,
+      deletedAt: null,
+    };
+    const other = { ...base, appEventId: randomUUID(), providerEventId: "b".repeat(64) };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        json({
+          items: [
+            {
+              id: base.providerEventId,
+              extendedProperties: { private: googleOwnershipMetadata(base) },
+            },
+          ],
+          nextPageToken: "next",
+        }),
+      )
+      .mockResolvedValueOnce(
+        json({
+          items: [
+            {
+              id: other.providerEventId,
+              extendedProperties: { private: googleOwnershipMetadata(other) },
+            },
+          ],
+        }),
+      );
+    await expect(recoverGoogleMapping(active, base.serviceDate, event.id)).rejects.toMatchObject({
+      code: "IDENTITY_CONFLICT",
+    });
+    expect(vi.mocked(fetch).mock.calls[1]![0]).toContain("pageToken=next");
+    expect(vi.mocked(fetch).mock.calls.every(([, init]) => !init?.method)).toBe(true);
+  });
+});
+
+// Regression tests for completion of the immutable ownership rollout.
+describe("ownership reconciliation and write fencing", () => {
+  it("shares one-night identity with every horizon, including Continuous", async () => {
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    const [planned] = await calculateSyncNight(syncInput, syncInput.startDate);
+    await events(
+      request("events", { cookie, body: { events: [planned], startDate: syncInput.startDate } }),
+    );
+    const active = await readSession(request("session", { cookie }));
+    const original = await findOwnedEvent(active.connectionId, syncInput.startDate, planned!.id);
+    for (const [nights, mode] of [
+      [30, "fixed"],
+      [60, "fixed"],
+      [90, "fixed"],
+      [90, "continuous"],
+    ] as const) {
+      const result = await runSync({ ...syncInput, nights, mode }, cookie);
+      expect(result.syncedNights).toBe(nights);
+      expect(service.stored.size).toBe(nights);
+      expect(await findOwnedEvent(active.connectionId, syncInput.startDate, planned!.id)).toEqual(
+        original,
+      );
+    }
+    expect(service.inserts()).toBe(90);
+  }, 60_000);
+
+  it("upgrades a migrated legacy mapping only with a verified conditional patch", async () => {
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const appId = randomUUID();
+    const providerId = syncEventIdentity(active.subject, "2026-03-28", event.id);
+    await db.query(
+      "INSERT INTO app_calendar_events (app_event_id, connection_id, service_date, event_kind) VALUES ($1, $2, '2026-03-28', $3)",
+      [appId, active.connectionId, event.id],
+    );
+    await db.query(
+      "INSERT INTO google_calendar_event_mappings (app_event_id, google_connection_id, local_night, event_type, google_event_id) VALUES ($1, $2, '2026-03-28', $3, $4)",
+      [appId, active.connectionId, event.id, providerId],
+    );
+    service.stored.set(providerId, {
+      ...googleEventPayload(event),
+      id: providerId,
+      etag: '"v1"',
+      status: "confirmed",
+      extendedProperties: {
+        private: {
+          application: "prophetic-night-segments",
+          planEvent: event.id,
+          localNight: "2026-03-28",
+        },
+      },
+    });
+    expect(await syncGoogleEvent(active, "2026-03-28", event)).toBe("updated");
+    expect(service.inserts()).toBe(0);
+    expect(service.patches()).toBe(1);
+    expect(service.stored.get(providerId)!.extendedProperties.private.appEventId).toBe(appId);
+    expect(
+      (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!.metadataVersion,
+    ).toBe(1);
+    delete service.stored.get(providerId)!.extendedProperties.private.ownershipVersion;
+    await expect(syncGoogleEvent(active, "2026-03-28", event)).rejects.toMatchObject({
+      code: "EVENT_NOT_OWNED",
+    });
+    expect(service.patches()).toBe(1);
+  });
+
+  it("retries failed database confirmation using the reserved provider ID", async () => {
+    const service = calendarService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    await db.exec(
+      "CREATE FUNCTION reject_confirmation() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'confirmation failed'; END $$; CREATE TRIGGER reject_confirmation BEFORE UPDATE ON google_calendar_event_mappings FOR EACH ROW EXECUTE FUNCTION reject_confirmation();",
+    );
+    try {
+      await expect(syncGoogleEvent(active, "2026-03-28", event)).rejects.toThrow();
+      expect(service.inserts()).toBe(1);
+      expect((await db.query("SELECT synced_at FROM google_calendar_event_mappings")).rows).toEqual(
+        [{ synced_at: null }],
+      );
+    } finally {
+      await db.exec(
+        "DROP TRIGGER reject_confirmation ON google_calendar_event_mappings; DROP FUNCTION reject_confirmation();",
+      );
+    }
+    const reserved = await findOwnedEvent(active.connectionId, "2026-03-28", event.id);
+    expect(await syncGoogleEvent(active, "2026-03-28", event)).toBe("existing");
+    expect(await findOwnedEvent(active.connectionId, "2026-03-28", event.id)).toEqual(reserved);
+    expect(service.inserts()).toBe(1);
+    expect(service.patches()).toBe(0);
+  });
+
+  it.each(["create", "update", "delete"])(
+    "prevents %s after the lease expires during the provider read",
+    async (action) => {
+      const service = removalService();
+      const cookie = await sessionCookie();
+      const active = await readSession(request("session", { cookie }));
+      if (action !== "create") await syncGoogleEvent(active, "2026-03-28", event);
+      const owner = randomUUID();
+      expect(await acquireSyncLease(active.connectionId, owner)).toBe(true);
+      const original = vi.mocked(fetch).getMockImplementation()!;
+      vi.mocked(fetch).mockImplementation(async (url, init) => {
+        const response = await original(url, init);
+        if (
+          (!init?.method || init.method === "GET") &&
+          !String(url).includes("privateExtendedProperty")
+        )
+          await db.query(
+            "UPDATE google_calendar_sync_leases SET expires_at = now() - interval '1 second' WHERE owner = $1",
+            [owner],
+          );
+        return response;
+      });
+      const leased = { ...active, operationOwner: owner };
+      const operation =
+        action === "delete"
+          ? removeGoogleEvent(
+              (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!,
+              leased,
+            )
+          : syncGoogleEvent(leased, "2026-03-28", { ...event, title: "Changed" });
+      await expect(operation).rejects.toMatchObject({ code: "SESSION_EXPIRED" });
+      expect(service.inserts()).toBe(action === "create" ? 0 : 1);
+      expect(service.patches()).toBe(0);
+      expect(service.deletes()).toBe(0);
+    },
+  );
+
+  it.each(["missing", "unknown-version", "copied-proof"])(
+    "leaves %s ownership untouched",
+    async (kind) => {
+      const service = removalService();
+      const cookie = await sessionCookie();
+      const active = await readSession(request("session", { cookie }));
+      await syncGoogleEvent(active, "2026-03-28", event);
+      await syncGoogleEvent(active, "2026-03-27", event);
+      const current = (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!;
+      const previous = (await findOwnedEvent(active.connectionId, "2026-03-27", event.id))!;
+      const stored = service.stored.get(current.providerEventId)!;
+      if (kind === "missing") stored.extendedProperties = undefined as never;
+      else if (kind === "unknown-version") stored.extendedProperties.private.ownershipVersion = "2";
+      else
+        stored.extendedProperties = structuredClone(
+          service.stored.get(previous.providerEventId)!.extendedProperties,
+        );
+      await expect(
+        syncGoogleEvent(active, "2026-03-28", { ...event, title: "Changed" }),
+      ).rejects.toMatchObject({ code: "EVENT_NOT_OWNED" });
+      expect(
+        (
+          await removeRequest(
+            { scope: "night", startDate: "2026-03-28", selected: [event.id] },
+            cookie,
+          )
+        ).outcomes[0]!.code,
+      ).toBe("EVENT_NOT_OWNED");
+      expect(service.patches()).toBe(0);
+      expect(service.deletes()).toBe(0);
+    },
+  );
+
+  it("recovers a legacy event on page two and rejects looping pagination", async () => {
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const id = syncEventIdentity(active.subject, "2026-03-28", event.id);
+    const candidate = {
+      id,
+      extendedProperties: {
+        private: {
+          application: "prophetic-night-segments",
+          planEvent: event.id,
+          localNight: "2026-03-28",
+        },
+      },
+    };
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(json({ items: [], nextPageToken: "page-two" }))
+      .mockResolvedValueOnce(json({ items: [candidate] }));
+    expect((await recoverGoogleMapping(active, "2026-03-28", event.id))!.providerEventId).toBe(id);
+    vi.mocked(fetch).mockImplementation(async () => json({ items: [], nextPageToken: "loop" }));
+    await expect(recoverGoogleMapping(active, "2026-03-28", event.id)).rejects.toMatchObject({
+      code: "IDENTITY_CONFLICT",
+    });
+    expect(vi.mocked(fetch).mock.calls).toHaveLength(4);
+  });
+
+  it("preserves a sole unverified legacy candidate instead of claiming ownership", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const id = "a".repeat(64);
+    service.stored.set(id, {
+      ...googleEventPayload(event),
+      id,
+      etag: '"v1"',
+      status: "confirmed",
+      extendedProperties: {
+        private: {
+          application: "prophetic-night-segments",
+          planEvent: event.id,
+          localNight: "2026-03-28",
+        },
+      },
+    });
+    const result = await removeRequest(
+      { scope: "night", startDate: "2026-03-28", selected: [event.id] },
+      cookie,
+    );
+    expect(result.outcomes[0]!.code).toBe("EVENT_NOT_OWNED");
+    expect(service.deletes()).toBe(0);
+    expect(service.stored.size).toBe(1);
+    expect((await db.query("SELECT * FROM google_calendar_event_mappings")).rows).toHaveLength(0);
+  });
+
+  it("removes retired mapped kinds only inside the explicitly authorised all-types horizon", async () => {
+    const service = removalService();
+    const cookie = await sessionCookie();
+    const active = await readSession(request("session", { cookie }));
+    const retired = { ...event, id: "retired-planning-slot" };
+    await syncGoogleEvent(active, "2026-03-28", retired);
+    await syncGoogleEvent(active, "2026-02-28", retired);
+    await syncGoogleEvent(active, "2026-03-28", event);
+    await saveSyncPreference(active.connectionId, syncInput);
+    const result = await removeRequest(
+      {
+        scope: "horizon",
+        startDate: "2026-03-01",
+        nights: 30,
+        mode: "fixed",
+        selected: [],
+        allEventTypes: true,
+      },
+      cookie,
+    );
+    expect(result.outcomes).toHaveLength(2);
+    expect(result.outcomes.every((item) => item.status === "removed")).toBe(true);
+    expect(result.outcomes.map((item) => item.id)).toContain(retired.id);
+    expect(service.stored.size).toBe(1);
+    expect([...service.stored.values()][0]!.extendedProperties.private.localNight).toBe(
+      "2026-02-28",
+    );
+    expect((await readSyncSelection(active.connectionId)).selected).toEqual([]);
+  });
+});
+
+it.each(["events", "remove"])(
+  "rejects missing or contradictory service-date scope on %s before provider access",
+  async (path) => {
+    const cookie = await sessionCookie();
+    for (const [body, code] of [
+      [
+        { events: [event], ...(path === "remove" ? { scope: "night" } : {}) },
+        "SERVICE_DATE_REQUIRED",
+      ],
+      [
+        {
+          events: [{ ...event, serviceDate: "2026-03-28" }],
+          startDate: "2026-03-29",
+          ...(path === "remove" ? { scope: "night" } : {}),
+        },
+        "IDENTITY_CONFLICT",
+      ],
+    ] as const) {
+      const raw = new NextRequest(`${origin}/api/google-calendar/${path}`, {
+        method: "POST",
+        headers: { origin, "Content-Type": "application/json", cookie },
+        body: JSON.stringify(body),
+      });
+      const result = await (path === "events" ? events(raw) : remove(raw));
+      expect(result.status).toBeGreaterThanOrEqual(400);
+      expect((await result.json()).error.code).toBe(code);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+    expect((await db.query("SELECT * FROM app_calendar_events")).rows).toHaveLength(0);
+  },
+);
+
+it("preserves identity and content after a conditional update conflict", async () => {
+  const service = calendarService();
+  const cookie = await sessionCookie();
+  const active = await readSession(request("session", { cookie }));
+  await syncGoogleEvent(active, "2026-03-28", event);
+  const original = (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!;
+  const fetchOriginal = vi.mocked(fetch).getMockImplementation()!;
+  vi.mocked(fetch).mockImplementation(async (url, init) =>
+    init?.method === "PATCH" ? json({}, 412) : fetchOriginal(url, init),
+  );
+  await expect(
+    syncGoogleEvent(active, "2026-03-28", { ...event, description: "New calculation version" }),
+  ).rejects.toMatchObject({ code: "EVENT_CHANGED" });
+  expect(await findOwnedEvent(active.connectionId, "2026-03-28", event.id)).toEqual(original);
+  expect(service.stored.get(original.providerEventId)!.summary).toBe(event.title);
+  expect(service.inserts()).toBe(1);
+  expect(service.patches()).toBe(0);
+});
+
+it("does not tombstone another calendar's mapping when the provider ID matches", async () => {
+  removalService();
+  const cookie = await sessionCookie();
+  const active = await readSession(request("session", { cookie }));
+  await syncGoogleEvent(active, "2026-03-28", event);
+  const primary = (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!;
+  const secondaryId = randomUUID();
+  await db.query(
+    "INSERT INTO app_calendar_events (app_event_id, connection_id, service_date, event_kind) VALUES ($1, $2, '2026-03-28', $3)",
+    [secondaryId, active.connectionId, event.id],
+  );
+  await db.query(
+    "INSERT INTO google_calendar_event_mappings (app_event_id, google_connection_id, local_night, event_type, calendar_id, google_event_id) VALUES ($1, $2, '2026-03-28', $3, 'secondary', $4)",
+    [secondaryId, active.connectionId, event.id, primary.providerEventId],
+  );
+  expect(
+    (await removeRequest({ scope: "night", startDate: "2026-03-28", selected: [event.id] }, cookie))
+      .outcomes[0]!.status,
+  ).toBe("removed");
+  expect(
+    (await findOwnedEvent(active.connectionId, "2026-03-28", event.id))!.deletedAt,
+  ).not.toBeNull();
+  expect(
+    (await findOwnedEvent(active.connectionId, "2026-03-28", event.id, "secondary"))!.deletedAt,
+  ).toBeNull();
+});

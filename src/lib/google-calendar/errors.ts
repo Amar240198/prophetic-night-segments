@@ -1,7 +1,12 @@
 export const GOOGLE_MESSAGES = {
+  SERVICE_DATE_REQUIRED:
+    "Reload the night planner before adding or removing events. The original Maghrib night date is required.",
+  IDENTITY_CONFLICT:
+    "This calendar identity does not match the authorised night or account. The event was left unchanged.",
   REMOVE_FAILED: "Unable to remove this calendar event. Retry removal safely.",
-  EVENT_NOT_OWNED: "This event could not be verified as app-owned and was not removed.",
-  EVENT_CHANGED: "This event changed during removal and was not removed. Review it and retry.",
+  EVENT_NOT_OWNED: "This event could not be verified as app-owned and was left unchanged.",
+  EVENT_CHANGED:
+    "This event changed during the operation and was left unchanged. Review it and retry.",
   REMOVE_INCOMPLETE:
     "Removal reached its time limit. Retry to finish; remaining mappings were preserved.",
   SELECTION_CHANGED:
@@ -23,7 +28,7 @@ export const GOOGLE_MESSAGES = {
   EVENT_FAILED: "Unable to create calendar event.",
   RATE_LIMITED: "Google Calendar is busy. Please wait a moment and try again.",
   EVENT_DELETED:
-    "This event was previously deleted in Google Calendar. Restore it from Calendar’s trash or change its planned time before adding it again.",
+    "This event was previously removed. Restore it in Google Calendar before syncing again. Changing its time will not create a replacement.",
 } as const;
 export type GoogleErrorCode = keyof typeof GOOGLE_MESSAGES;
 export class GoogleCalendarError extends Error {

@@ -68,25 +68,41 @@ A future explicitly authorized worker can select only Continuous preferences, re
 the local current date from the saved provider, validate the versioned configuration,
 refresh credentials server-side, and reuse calculation/mapping logic under the same
 account lease. No schedule or automatic execution exists in this implementation.
-Disconnect cascades preferences away, removing future worker eligibility. Reconnection
+Disconnect explicitly clears preferences, removing future worker eligibility. Reconnection
 does not silently re-enable Continuous; a new explicit sync choice is required.
 
-All three tables from migration 002 reference `google_connections` and cascade on disconnect. Browser sessions
-resolve their connection server-side; clients cannot choose an account or Google ID.
-A deterministic SHA-256 event ID is derived from the Google subject, local night, and
-event type. It stays stable when calculated times, offsets, or browser sessions change,
-including reconnecting to the same Google account. IDs do not contain raw account data.
-Mappings are reserved before Google writes, then confirmed after success.
+Migration 004 adds a permanent `app_calendar_events` ledger and links existing mappings
+without changing Google IDs, connection IDs, service dates, sessions, or preferences.
+Unknown legacy timezone and event times remain NULL. Database triggers reject identity
+changes. Disconnect erases credentials, sessions, leases and sync preferences while
+retaining the account identity, app event ledger and provider mappings.
 
-Each retry reads the mapped deterministic event. Matching payloads are skipped; changed
-calculated payloads update only app-owned event fields using an ETag precondition.
-An uncertain insert response is recovered by the next lookup; a 409 insert conflict is
-also verified before proceeding. Foreign events are never overwritten and cancelled
-events are not resurrected. A failed mapping confirmation is reported as failure even
-if Google saved the event; retry reconciles it. Deselecting a type does not delete events
-from previous runs. The legacy one-night endpoint and manually saved links/ICS imports
-retain their existing identities; the forward-sync mappings do not retroactively merge
-those independently exported events.
+One-night Add and every horizon share the same persisted account/calendar/service-date/
+event-kind identity. New app UUIDs and random Google-valid IDs are reserved before any
+external creation. The service date is always the original Maghrib-associated date:
+Maghrib on 2026-03-28 and Fajr on 2026-03-29 produce serviceDate 2026-03-28 for every
+event. Event timestamps, display timezone, DST, labels and calculation changes never
+rewrite that identity. Precision and elapsed-time calculations remain in the engine.
+
+Every update/delete verifies the provider, account, connection, calendar, provider event
+ID, app ID, application, supported ownership version, service date and event kind.
+Versioned Google private metadata carries an HMAC proof binding those fields; copied
+metadata cannot authorise a different event/account/calendar. Writes require a live
+connection and the operation's lease, and updates/deletions require the read ETag.
+Missing, contradictory, unknown-version or unverified ownership fails closed.
+
+Retries read the reserved event ID. Matching payloads are skipped; changed payloads
+update in place. Lost create responses and failed database confirmations cannot cause
+new IDs. Confirmed deletions retain tombstones; changing times cannot bypass them.
+Restore an event in Google before resyncing a tombstoned identity.
+
+Persisted legacy mappings require their original application/type/local-night markers.
+A verified conditional patch upgrades metadata while preserving the Google ID. Missing
+mappings can be recovered through paginated service-date discovery only when the frozen
+legacy subject/date/type hash and markers match, or a versioned HMAC verifies. Recovery
+checks all pages (up to 20 pages of 250); a repeated token or unfinished enumeration
+fails closed, never asserting absence. Title/time similarity is never ownership proof.
+Unmapped old one-night exports lack a proven service date and remain untouched.
 
 Google reference: [client-supplied event IDs](https://developers.google.com/workspace/calendar/api/v3/reference/events/insert)
 and [partial event updates](https://developers.google.com/workspace/calendar/api/v3/reference/events/patch).
@@ -145,7 +161,7 @@ already-in-flight operations may finish. Remaining events are marked failed/not 
 events to proceed. Quota errors require a later explicit retry; there is no immediate
 retry loop. Access tokens are checked/refreshed through the existing session reader
 between nights. A disconnect or changed connection stops new work; already-in-flight
-Google requests may finish. Cascaded mappings prevent further event reservations.
+Google requests may finish. Disconnected connections cannot reserve new event identities.
 
 The route requests a 300-second platform duration. Work has a shorter bounded deadline
 and reserves time for network/database operations and returning partial results. Slow
@@ -169,52 +185,61 @@ The UI announces **Google Calendar connected**, leaves the waiting state automat
 and offers useful closure/timeout errors. The overall OAuth wait is bounded to ten
 minutes. “Check connection” remains an optional fallback, not a required step.
 
-## Rollout — requires explicit production approval
+## Rollout — migration 004 before application deployment
 
-Migration 001 and migration 002 have been applied to Production Neon, and all five
-tables have been verified. Do not reapply migration 002 to that database. Its event
-mappings, leases, and sync preferences are consolidated into one transaction.
-For a new database, apply migration 001 first, then, after approval, apply only
-migration 002 using a securely loaded `DATABASE_URL`:
+Migrations are **manual**; startup and `pnpm build` do not run SQL. Repository history
+records 001–003 as applied to Production; verify the target database before proceeding.
+Do not reapply 001–003 or edit them. Migration 004 is forward-only and transactional.
+
+Pause calendar mutations and drain in-flight requests before applying 004: the previous
+application's insert/disconnect code is incompatible with the new identity requirements.
+Keep mutations paused until the matching application deployment is ready. Back up the
+database through the normal provider workflow first. With the intended production
+`DATABASE_URL` securely loaded, run exactly once:
 
 ```sh
-PGDATABASE="$DATABASE_URL" psql -X --set=ON_ERROR_STOP=1 --file=migrations/002_google_calendar_event_mappings.sql
+PGDATABASE="$DATABASE_URL" psql -X --set=ON_ERROR_STOP=1 --file=migrations/004_calendar_ownership.sql
 ```
 
-This transactional, additive migration does not modify existing connections or sessions.
-It deliberately fails if its tables already exist. Back up the database per your normal
-policy. Apply 002 before deploying this code; the previous deployment remains compatible
-with the extra tables. Do not roll back the tables while sync-capable code is serving.
-No migration is run automatically on startup or build. Automated tests apply both SQL
-files only to isolated in-memory PostgreSQL and mock all Google/provider network calls.
-After approved migration and deployment, validate 30 → 60 → 90, repeat the same range to confirm skips,
-then verify that Continuous saves a distinct preference and shows no promise of automatic
-renewal. Confirm the visible OAuth connected state and disconnect removal of preferences.
+Alternatively run the complete file in the intended Neon production branch's SQL editor.
+Verify the new ledger count equals the mapping count, provider IDs/dates are preserved,
+`calendar_event_owner_fk` exists, and the three `protect_calendar_*` triggers are enabled.
+Only then push the compatible application commit to `origin/main` for the connected
+Vercel Git deployment. No dashboard changes or automatic migration are performed by this
+repository. Never deploy this code against a pre-004 schema or roll back to the old
+calendar writer against the migrated schema. If migration fails, its transaction rolls
+back; diagnose the failure before proceeding.
+
+Automated tests execute 001 → 002 → 003 → 004 against isolated PGlite PostgreSQL and mock
+Google/provider calls. They do not migrate production. After deployment, verify one-night
+Add followed by overlapping 30 → 60 → 90 → Continuous, safe removals, and reconnect.
+
+Ownership signing defaults to the existing `GOOGLE_SESSION_SECRET` under key ID
+`session-v1`. Retain that key for historical proofs. For independent rotation, configure
+server-only `CALENDAR_OWNERSHIP_KEYS` as JSON with `active` and `keys`, where each value
+is a base64-encoded 32-byte secret. Include `session-v1` with the original secret when
+switching from the default, and retain old keys while their events exist. Unknown keys
+leave events untouched. Never expose this configuration in client code or logs.
 
 ## Explicit event removal
 
-The checked event types now drive both addition and removal. **Remove selected events (X)**
-next to the one-night Add button removes only the displayed night: the server checks the
-existing one-night identity at the displayed times and, when a local night is supplied,
-that night's persistent mappings. A changed legacy one-night time has a different identity;
-select the original times to remove that older export. Manually saved links and ICS imports
-without our identity and private ownership markers are not removed.
+The checked event types drive both addition and removal. **Remove selected events (X)**
+uses the original Maghrib service date and persisted mappings, including when timing
+has changed. It does not derive identity from the current event timestamp. Imports and
+manual events cannot be claimed through title or timestamp similarity.
 
-**Remove from synced horizon (30/60/90 nights)** is a separate action. Continuous uses its
-initial 90-night horizon. The confirmation states the starting date, number of nights,
-selected types, and maximum number of mapped events affected. Dates are inclusive and use
-calendar-date arithmetic, independent of current provider availability or changed prayer
-times. Horizon removal never searches the calendar for events: only account/date/type
-mappings in the requested range can identify deletion targets. Dates and types outside
-that range remain untouched, including unmapped one-night exports.
+**Remove from synced horizon (30/60/90 nights)** removes only explicitly selected kinds
+in the inclusive requested date range. Continuous uses 90 nights. Missing mappings use
+the verified legacy recovery rules above. **Remove all app events in horizon** explicitly
+authorises every persisted type in that range, including retired kinds absent from the
+current UI registry. It enumerates the account's primary-calendar ledger (at most 2,880
+targets), clears all saved sync selections, and verifies each event before deletion.
+It does not claim unmapped calendar entries. Dates outside the range remain untouched.
 
-For an existing event, removal verifies the exact event identity and private application,
-event-type, and (for mappings) local-night markers before sending an ETag-conditional
-DELETE. An ownership mismatch or ETag change is a failure, never permission to delete.
-A 404, 410, or cancelled tombstone is treated as already absent. Only a successful deletion
-or confirmed absence permits mapping removal. A network failure or failed mapping cleanup
-is reported as failure; retry reconciles the remaining mapping. Results distinguish
-removed, already absent, and failed/not-attempted identities without returning Google IDs.
+A verified event is deleted with `If-Match`. An ownership mismatch or changed ETag is a
+failure. A mapped 404, 410 or cancelled event is already absent. Successful deletion or
+confirmed absence marks the mapping with a tombstone; network/database failures retain
+retryable records. Outcomes distinguish removed, absent and failed without exposing IDs.
 
 Google documents [conditional deletion with If-Match](https://developers.google.com/workspace/calendar/api/guides/version-resources)
 and [event deletion](https://developers.google.com/workspace/calendar/api/v3/reference/events/delete).
@@ -256,9 +281,13 @@ HttpOnly session, and primary calendar as sync. Supported request bodies:
 }
 ```
 
-For one-night removal, send `scope: "night"`, `events` using the existing validated
-one-night event schema, and optional `startDate` identifying the displayed local night.
-Omitting `startDate` restricts removal to legacy one-night identities. Clients cannot
+For one-night removal, send `scope: "night"`, `selected: ["fajr"]` and the original
+`startDate`. Legacy callers can still send `events`, but must include an explicit
+`startDate` or consistent `serviceDate` on the events; missing identity fails with
+`SERVICE_DATE_REQUIRED`. One-night Add likewise requires `startDate` or event
+`serviceDate`, and shares the horizon ledger. Conflicting dates yield `IDENTITY_CONFLICT`.
+For all-type horizon removal, send the bounded horizon body above with `selected: []`
+and `allEventTypes: true`. This explicit scope is required to include retired types. Clients cannot
 supply Google event IDs, account IDs, arbitrary calendars, or provider URLs.
 
 Responses use the typed `RemovalResult` contract in `src/lib/google-calendar/removal.ts`.
@@ -269,9 +298,8 @@ HTTP 200 may contain partial failures; inspect every outcome. The new safe error
 Removal, forward sync, and one-night insertion all share the existing account lease.
 Removal runs at most three targets concurrently, rechecks the session before each target,
 paces Google operations, and stops starting work on quota/authentication failures or the
-bounded deadline. Already-in-flight operations may finish. No new database migration,
-OAuth scope, cron, or background process is required. Production rollout still requires
-explicit authorization; implementation tests use isolated PostgreSQL and mocked Google calls.
+bounded deadline. Already-in-flight operations may finish. Migration 004 is required;
+no new OAuth scope, cron, or background process is needed.
 
 Calendar selections now include `night-part-1` through `night-part-6`, titled
 “Night — Part 1” through “Night — Part 6”. Each duration uses adjacent engine

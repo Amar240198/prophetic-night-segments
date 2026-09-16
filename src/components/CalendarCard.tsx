@@ -9,7 +9,7 @@ import { buildGooglePlan } from "@/lib/google-calendar/plan";
 import type { NightCalculationResult } from "@prophetic-night/night-engine";
 import { buildCalendarEvents, formatCalendarTime } from "@/lib/calendar/buildCalendarEvents";
 import { generateICS } from "@/lib/calendar/generateICS";
-import { googleCalendarUrl } from "@/lib/calendar/googleCalendarUrl";
+import { assignExportIdentities } from "@/lib/calendar/exportIdentity";
 
 export function CalendarCard({
   result,
@@ -37,12 +37,12 @@ export function CalendarCard({
     prayerSource,
   });
   const chosen = events.filter((event) => selected.includes(event.id));
-  function download() {
+  async function download() {
     if (!valid || !chosen.length) return;
     setDownloadError("");
     try {
       const url = URL.createObjectURL(
-        new Blob([generateICS(chosen, new Date().toISOString())], {
+        new Blob([generateICS(await assignExportIdentities(chosen), new Date().toISOString())], {
           type: "text/calendar;charset=utf-8",
         }),
       );
@@ -149,29 +149,11 @@ export function CalendarCard({
           {downloadError}
         </p>
       )}
-      {valid && chosen.length > 0 && (
-        <details className="mt-5">
-          <summary className="cursor-pointer text-[#d0ae67]">Add to Google Calendar</summary>
-          <p className="mt-2 text-sm text-[#9baca7]">
-            Open and save each selected event in Google Calendar, or import the .ics file for all
-            events. Google may ask you to sign in.
-          </p>
-          <ul className="mt-3 space-y-3">
-            {chosen.map((event) => (
-              <li key={event.id}>
-                <a
-                  href={googleCalendarUrl(event)}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="text-[#d0ae67] underline"
-                >
-                  {event.title} (opens in a new tab)
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
+      <p className="mt-4 text-sm text-[#9baca7]">
+        Calendar files carry stable identities saved in this browser. Imported copies are managed by
+        your calendar app; Sixth cannot safely update or remove an unverified import. Use the
+        connected Google integration below for managed updates and removal.
+      </p>
       <GoogleCalendarSection
         valid={valid}
         localNight={Temporal.Instant.from(result.night.start)

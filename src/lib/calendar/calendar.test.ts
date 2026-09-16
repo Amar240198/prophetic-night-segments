@@ -1,8 +1,17 @@
 import { calculateNightSegments } from "@prophetic-night/night-engine";
 import { describe, expect, it } from "vitest";
 import { buildCalendarEvents, formatCalendarTime } from "./buildCalendarEvents";
-import { generateICS } from "./generateICS";
-import { googleCalendarUrl } from "./googleCalendarUrl";
+import { generateICS as serializeICS } from "./generateICS";
+import type { CalendarEvent } from "./buildCalendarEvents";
+function generateICS(events: readonly CalendarEvent[], at: string) {
+  return serializeICS(
+    events.map((event, i) => ({
+      ...event,
+      appEventId: `00000000-0000-4000-8000-${String(i).padStart(12, "0")}`,
+    })),
+    at,
+  );
+}
 
 const options = {
   wakeBufferMinutes: 15,
@@ -114,13 +123,5 @@ describe("calendar layer", () => {
     for (const line of ics.split("\r\n"))
       expect(new TextEncoder().encode(line).length).toBeLessThanOrEqual(75);
     expect(ics.replace(/\r\n/g, "")).not.toMatch(/[\r\n]/);
-  });
-  it("encodes Google event details and exact UTC dates", () => {
-    const event = buildCalendarEvents(night, options).find((event) => event.id === "prayer")!;
-    const url = new URL(googleCalendarUrl(event));
-    expect(url.origin).toBe("https://calendar.google.com");
-    expect(url.searchParams.get("dates")).toBe("20260102T020000Z/20260102T060000Z");
-    expect(url.searchParams.get("details")).toBe(event.description);
-    expect(url.searchParams.get("ctz")).toBe("UTC");
   });
 });

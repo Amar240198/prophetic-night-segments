@@ -2,22 +2,32 @@ import { randomUUID } from "node:crypto";
 import { Temporal } from "@js-temporal/polyfill";
 import type { NextRequest } from "next/server";
 import { GoogleCalendarError, type GoogleErrorCode } from "./errors";
-import { googleEventPayload, validateSelectedEvents } from "./events.server";
-import { GOOGLE_EVENT_TITLES, type GoogleEventId } from "./plan";
 import { FIXED_SYNC_HORIZONS, CONTINUOUS_SYNC_NIGHTS } from "./sync";
 import { syncDates } from "./sync-plan.server";
 import { readSession, type GoogleSession } from "./session.server";
 import {
   acquireSyncLease,
   releaseSyncLease,
-  findEventMapping,
   removeEventMapping,
   removeSyncSelection,
   assertSelectionRevision,
 } from "./sync-database.server";
 import { removeGoogleEvent } from "./remove-event.server";
 import type { RemovalRequest, RemovalOutcome, RemovalResult } from "./removal";
-import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
+import { findOwnedEvent, reserveOwnedEvent } from "@/lib/calendar/repository.server";
+import { recoverGoogleMapping } from "./recovery.server";
+import { isServiceDate } from "@/lib/calendar/ownership";
+import { database } from "./database.server";
+
+function validRemovalTypes(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length > 0 &&
+    value.length <= 32 &&
+    new Set(value).size === value.length &&
+    value.every((id) => typeof id === "string" && /^[a-z][a-z0-9-]{0,99}$/.test(id))
+  );
+}
 
 export function validateRemovalRequest(value: unknown): RemovalRequest {
   try {
@@ -29,12 +39,26 @@ export function validateRemovalRequest(value: unknown): RemovalRequest {
       const date = Temporal.PlainDate.from(body.startDate);
       if (date.year < 2000 || date.year > 2100) throw new Error();
     }
-    if (body.scope === "night")
-      return {
-        scope: "night",
-        events: validateSelectedEvents(body),
-        ...(body.startDate !== undefined ? { startDate: body.startDate as string } : {}),
-      };
+    if (body.scope === "night") {
+      const events = body.events;
+      if (
+        events !== undefined &&
+        (!Array.isArray(events) || events.some((event) => !event || typeof event !== "object"))
+      )
+        throw new Error();
+      const startDate =
+        body.startDate ?? (Array.isArray(events) ? events[0]?.serviceDate : undefined);
+      if (!isServiceDate(startDate)) throw new GoogleCalendarError("SERVICE_DATE_REQUIRED");
+      if (
+        Array.isArray(events) &&
+        events.some((event) => event.serviceDate !== undefined && event.serviceDate !== startDate)
+      )
+        throw new GoogleCalendarError("IDENTITY_CONFLICT", 409);
+      const selected =
+        body.selected ?? (Array.isArray(events) ? events.map((event) => event.id) : undefined);
+      if (!validRemovalTypes(selected)) throw new Error();
+      return { scope: "night", selected, startDate };
+    }
     if (
       body.scope !== "horizon" ||
       typeof body.startDate !== "string" ||
@@ -44,11 +68,11 @@ export function validateRemovalRequest(value: unknown): RemovalRequest {
       (body.mode === "continuous"
         ? body.nights !== CONTINUOUS_SYNC_NIGHTS
         : !FIXED_SYNC_HORIZONS.includes(body.nights)) ||
-      !Array.isArray(body.selected) ||
-      body.selected.length < 1 ||
-      body.selected.length > Object.keys(GOOGLE_EVENT_TITLES).length ||
-      new Set(body.selected).size !== body.selected.length ||
-      body.selected.some((id) => typeof id !== "string" || !Object.hasOwn(GOOGLE_EVENT_TITLES, id))
+      (body.allEventTypes !== undefined && typeof body.allEventTypes !== "boolean") ||
+      !(
+        validRemovalTypes(body.selected) ||
+        (body.allEventTypes === true && Array.isArray(body.selected) && body.selected.length === 0)
+      )
     )
       throw new Error();
     if (
@@ -62,12 +86,14 @@ export function validateRemovalRequest(value: unknown): RemovalRequest {
       startDate: body.startDate,
       mode: body.mode,
       nights: body.nights,
-      selected: body.selected as GoogleEventId[],
+      selected: body.selected,
+      ...(body.allEventTypes === true ? { allEventTypes: true } : {}),
       ...(body.selectionRevision !== undefined
         ? { selectionRevision: body.selectionRevision as string | null }
         : {}),
     };
-  } catch {
+  } catch (error) {
+    if (error instanceof GoogleCalendarError) throw error;
     throw new GoogleCalendarError("INVALID_REQUEST");
   }
 }
@@ -87,42 +113,41 @@ export async function removeCalendarEvents(
     nights: input.scope === "night" ? 1 : input.nights,
     outcomes: [],
   };
-  type Target = {
-    date?: string;
-    id: GoogleEventId;
-    identity: "one-night" | "mapped";
-    eventId?: string;
-    event?: CalendarEvent;
-  };
+  type Target = { date: string; id: string; identity: "mapped" };
   let stopCode: GoogleErrorCode | undefined;
   try {
+    let allTargets: Target[] | undefined;
     if (input.scope === "horizon") {
       await assertSelectionRevision(initial.connectionId, input.selectionRevision);
+      if (input.allEventTypes) {
+        const dates = syncDates(input.startDate, input.nights);
+        const rows = await database()`SELECT local_night::text AS date, event_type AS id
+          FROM google_calendar_event_mappings WHERE google_connection_id = ${initial.connectionId}
+            AND calendar_id = 'primary' AND local_night BETWEEN ${dates[0]}::date AND ${dates.at(-1)}::date
+          ORDER BY local_night, event_type LIMIT 2881`;
+        if (rows.length > 2880) throw new GoogleCalendarError("REMOVE_INCOMPLETE", 409);
+        allTargets = rows.map((row) => ({
+          date: row.date as string,
+          id: row.id as string,
+          identity: "mapped",
+        }));
+        // Clear every saved type, including retired types, before external deletion.
+        await database()`DELETE FROM google_calendar_sync_preferences WHERE google_connection_id = ${initial.connectionId}`;
+      }
       // Persist removal intent BEFORE external writes, including when Google later fails.
       result.syncSelection = await removeSyncSelection(initial.connectionId, input.selected);
     }
     const targets: Target[] =
-      input.scope === "horizon"
+      allTargets ??
+      (input.scope === "horizon"
         ? syncDates(input.startDate, input.nights).flatMap((date) =>
             input.selected.map((id) => ({ date, id, identity: "mapped" as const })),
           )
-        : input.events.flatMap((event) => [
-            {
-              id: event.id as GoogleEventId,
-              identity: "one-night" as const,
-              eventId: googleEventPayload(event).id,
-              event,
-            },
-            ...(input.startDate
-              ? [
-                  {
-                    date: input.startDate,
-                    id: event.id as GoogleEventId,
-                    identity: "mapped" as const,
-                  },
-                ]
-              : []),
-          ]);
+        : (input.selected ?? input.events.map((event) => event.id)).map((id) => ({
+            date: input.startDate!,
+            id,
+            identity: "mapped" as const,
+          })));
     const outcomes: RemovalOutcome[] = new Array(targets.length);
     let cursor = 0;
     await Promise.all(
@@ -146,28 +171,32 @@ export async function removeCalendarEvents(
             )
               throw new GoogleCalendarError("SESSION_EXPIRED", 401);
             if (stopCode) throw new GoogleCalendarError(stopCode);
-            const eventId =
-              target.identity === "mapped"
-                ? await findEventMapping(session.connectionId, target.date!, target.id)
-                : target.eventId!;
-            if (stopCode) throw new GoogleCalendarError(stopCode);
-            attemptedGoogle = Boolean(eventId);
-            const status = eventId
-              ? await removeGoogleEvent(
-                  eventId,
+            let mapping = await findOwnedEvent(session.connectionId, target.date, target.id);
+            if (!mapping) {
+              attemptedGoogle = true;
+              const recovered = await recoverGoogleMapping(session, target.date, target.id);
+              if (recovered)
+                mapping = await reserveOwnedEvent(
+                  session.connectionId,
+                  target.date,
                   target.id,
-                  session.accessToken,
-                  target.identity === "mapped"
-                    ? { kind: "mapped", localNight: target.date! }
-                    : { kind: "one-night" },
-                  target.identity === "one-night" && target.event
-                    ? { event: target.event }
-                    : undefined,
-                )
+                  null,
+                  recovered,
+                );
+            }
+            if (stopCode) throw new GoogleCalendarError(stopCode);
+            attemptedGoogle ||= Boolean(mapping);
+            const status = mapping
+              ? await removeGoogleEvent(mapping, { ...session, operationOwner: owner })
               : "absent";
-            // Never forget a failed or uncertain Google deletion. Retry checks absence first.
-            if (eventId && target.identity === "mapped")
-              await removeEventMapping(session.connectionId, target.date!, target.id, eventId);
+            // Keep a tombstone, including the original provider identity, for safe retries.
+            if (mapping)
+              await removeEventMapping(
+                session.connectionId,
+                target.date,
+                target.id,
+                mapping.providerEventId,
+              );
             outcomes[index] = { ...outcome, status };
           } catch (error) {
             const rawCode = error instanceof GoogleCalendarError ? error.code : "REMOVE_FAILED";

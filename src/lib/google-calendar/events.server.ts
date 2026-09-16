@@ -3,10 +3,11 @@ import { Temporal } from "@js-temporal/polyfill";
 import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 import { GoogleCalendarError, type GoogleErrorCode } from "./errors";
 import { GOOGLE_EVENT_TITLES, type GoogleEventId } from "./plan";
+import { isServiceDate } from "@/lib/calendar/ownership";
 
 export interface EventOutcome {
   id: string;
-  status: "created" | "existing" | "failed";
+  status: "created" | "updated" | "existing" | "failed";
   code?: GoogleErrorCode;
 }
 
@@ -35,7 +36,8 @@ export function validateSelectedEvents(value: unknown): CalendarEvent[] {
       typeof item.timeZone !== "string" ||
       item.timeZone.length > 100 ||
       typeof item.description !== "string" ||
-      item.description.length > 6000
+      item.description.length > 6000 ||
+      (item.serviceDate !== undefined && !isServiceDate(item.serviceDate))
     )
       throw new GoogleCalendarError("INVALID_REQUEST");
     seen.add(item.id);
@@ -53,6 +55,7 @@ export function validateSelectedEvents(value: unknown): CalendarEvent[] {
         throw new Error();
       return {
         id: item.id,
+        ...(item.serviceDate ? { serviceDate: item.serviceDate } : {}),
         title: GOOGLE_EVENT_TITLES[item.id as GoogleEventId],
         start: start.toString(),
         end: end.toString(),
@@ -115,37 +118,6 @@ export async function googleFailure(response: Response): Promise<GoogleCalendarE
     return new GoogleCalendarError("PERMISSION_DENIED", 403);
   }
   return new GoogleCalendarError("EVENT_FAILED", 502);
-}
-
-export async function insertGoogleEvent(
-  event: CalendarEvent,
-  accessToken: string,
-): Promise<"created" | "existing"> {
-  const payload = googleEventPayload(event);
-  const endpoint = "https://www.googleapis.com/calendar/v3/calendars/primary/events";
-  const headers = { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" };
-  const response = await fetch(`${endpoint}?sendUpdates=none`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-    cache: "no-store",
-    signal: AbortSignal.timeout(6000),
-  });
-  if (response.ok) return "created";
-  if (response.status === 409) {
-    const existing = await fetch(`${endpoint}/${payload.id}?fields=status,extendedProperties`, {
-      headers,
-      cache: "no-store",
-      signal: AbortSignal.timeout(6000),
-    });
-    if (!existing.ok) throw await googleFailure(existing);
-    const body = await existing.json();
-    if (body.status === "cancelled") throw new GoogleCalendarError("EVENT_DELETED", 409);
-    if (body.extendedProperties?.private?.application === "prophetic-night-segments")
-      return "existing";
-    throw new GoogleCalendarError("EVENT_FAILED", 409);
-  }
-  throw await googleFailure(response);
 }
 
 export async function readBoundedJson(request: Request): Promise<unknown> {

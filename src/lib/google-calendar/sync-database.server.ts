@@ -2,6 +2,19 @@ import { database } from "./database.server";
 import type { SyncPreference, SyncRequest, SyncSelection } from "./sync";
 import type { GoogleEventId } from "./plan";
 import { GoogleCalendarError } from "./errors";
+import type { GoogleSession } from "./session.server";
+
+export async function assertCalendarWriteAccess(session: GoogleSession) {
+  const rows = await database()`SELECT id FROM google_connections
+    WHERE id = ${session.connectionId} AND provider = 'google'
+      AND google_subject = ${session.subject} AND disconnected_at IS NULL
+      AND encrypted_access_token IS NOT NULL
+      AND (${session.operationOwner ?? null}::uuid IS NULL OR EXISTS (
+        SELECT 1 FROM google_calendar_sync_leases WHERE google_connection_id = ${session.connectionId}
+          AND owner = ${session.operationOwner ?? null}::uuid
+          AND expires_at > now() + interval '15 seconds'))`;
+  if (rows.length !== 1) throw new GoogleCalendarError("SESSION_EXPIRED", 401);
+}
 
 export async function readSyncSelection(connection: string): Promise<SyncSelection> {
   const rows = await database()`SELECT selected_event_types, updated_at::text AS revision
@@ -23,7 +36,7 @@ export async function assertSelectionRevision(
 }
 
 // Called under the same account lease as sync. An empty preference disables future replay.
-export async function removeSyncSelection(connection: string, selected: GoogleEventId[]) {
+export async function removeSyncSelection(connection: string, selected: string[]) {
   await database()`WITH remaining AS (
     SELECT ARRAY(SELECT event_type FROM unnest(selected_event_types) AS event_type
       WHERE NOT (event_type = ANY(${selected}::text[]))) AS types
@@ -40,21 +53,21 @@ export async function removeSyncSelection(connection: string, selected: GoogleEv
 export async function findEventMapping(
   connection: string,
   date: string,
-  type: GoogleEventId,
+  type: string,
 ): Promise<string | null> {
   const rows = await database()`SELECT google_event_id FROM google_calendar_event_mappings
-    WHERE google_connection_id = ${connection} AND local_night = ${date}::date AND event_type = ${type}`;
+    WHERE google_connection_id = ${connection} AND calendar_id = 'primary' AND local_night = ${date}::date AND event_type = ${type} AND deleted_at IS NULL`;
   return rows.length ? (rows[0]!.google_event_id as string) : null;
 }
 
 export async function removeEventMapping(
   connection: string,
   date: string,
-  type: GoogleEventId,
+  type: string,
   eventId: string,
 ) {
-  await database()`DELETE FROM google_calendar_event_mappings WHERE google_connection_id = ${connection}
-    AND local_night = ${date}::date AND event_type = ${type} AND google_event_id = ${eventId}`;
+  await database()`UPDATE google_calendar_event_mappings SET deleted_at = now() WHERE google_connection_id = ${connection}
+    AND calendar_id = 'primary' AND local_night = ${date}::date AND event_type = ${type} AND google_event_id = ${eventId}`;
 }
 
 export async function saveSyncPreference(connection: string, input: SyncRequest) {
@@ -87,29 +100,7 @@ export async function acquireSyncLease(connection: string, owner: string): Promi
 export async function releaseSyncLease(connection: string, owner: string) {
   await database()`DELETE FROM google_calendar_sync_leases WHERE google_connection_id = ${connection} AND owner = ${owner}`;
 }
-export async function reserveEventMapping(
-  connection: string,
-  date: string,
-  type: string,
-  eventId: string,
-): Promise<string> {
-  const rows = await database()`INSERT INTO google_calendar_event_mappings
-    (google_connection_id, local_night, event_type, google_event_id)
-    VALUES (${connection}, ${date}::date, ${type}, ${eventId})
-    ON CONFLICT (google_connection_id, local_night, event_type) DO UPDATE
-    SET google_event_id = google_calendar_event_mappings.google_event_id
-    RETURNING google_event_id`;
-  return rows[0]!.google_event_id as string;
-}
-export async function confirmEventMapping(
-  connection: string,
-  date: string,
-  type: string,
-  hash: string,
-) {
-  const rows =
-    await database()`UPDATE google_calendar_event_mappings SET payload_hash = ${hash}, synced_at = now()
-    WHERE google_connection_id = ${connection} AND local_night = ${date}::date AND event_type = ${type}
-    RETURNING google_event_id`;
-  if (rows.length !== 1) throw new Error("Mapping unavailable");
-}
+export {
+  reserveOwnedEvent as reserveEventMapping,
+  confirmOwnedEvent as confirmEventMapping,
+} from "@/lib/calendar/repository.server";

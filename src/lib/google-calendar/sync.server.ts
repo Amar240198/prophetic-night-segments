@@ -59,7 +59,7 @@ export async function syncCalendar(
         continue;
       }
       try {
-        const status = await syncGoogleEvent(session, date, event);
+        const status = await syncGoogleEvent({ ...session, operationOwner: owner }, date, event);
         outcomes.push({ date, id, status });
       } catch (error) {
         const code = error instanceof GoogleCalendarError ? error.code : "EVENT_FAILED";

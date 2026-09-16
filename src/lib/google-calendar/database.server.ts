@@ -35,11 +35,12 @@ export async function persistConnection(input: {
          encrypted_refresh_token, access_token_expires_at)
       VALUES (${input.connectionId}, ${input.subject}, ${input.email}, ${input.accessToken},
               ${input.refreshToken}, ${input.accessExpiresAt})
-      ON CONFLICT (google_subject) DO UPDATE SET
+      ON CONFLICT (provider, google_subject) DO UPDATE SET
         google_account_email = EXCLUDED.google_account_email,
         encrypted_access_token = EXCLUDED.encrypted_access_token,
         encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, google_connections.encrypted_refresh_token),
         access_token_expires_at = EXCLUDED.access_token_expires_at,
+        disconnected_at = NULL,
         updated_at = now()
       RETURNING id
     )
@@ -54,7 +55,8 @@ export async function findSession(hash: string): Promise<StoredSession | null> {
       c.encrypted_access_token, c.encrypted_refresh_token, c.access_token_expires_at,
       s.expires_at AS session_expires_at
     FROM browser_sessions s JOIN google_connections c ON c.id = s.google_connection_id
-    WHERE s.id = ${hash}
+    WHERE s.id = ${hash} AND c.provider = 'google' AND c.disconnected_at IS NULL
+      AND c.encrypted_access_token IS NOT NULL
   `;
   return (rows[0] as StoredSession | undefined) ?? null;
 }
@@ -69,7 +71,8 @@ export async function updateTokens(
   await database()`UPDATE google_connections SET encrypted_access_token = ${access},
     encrypted_refresh_token = COALESCE(${refresh}, encrypted_refresh_token),
     access_token_expires_at = ${expiry}, updated_at = now()
-    WHERE id = ${row.connection_id} AND encrypted_access_token = ${row.encrypted_access_token}`;
+    WHERE id = ${row.connection_id} AND provider = 'google' AND disconnected_at IS NULL
+      AND encrypted_access_token = ${row.encrypted_access_token}`;
 }
 
 export async function deleteSession(hash: string) {
@@ -77,11 +80,23 @@ export async function deleteSession(hash: string) {
 }
 
 export async function deleteConnection(hash: string): Promise<StoredSession | null> {
-  // Disconnect removes credentials and all browser sessions even if Google is unavailable.
-  const rows = await database()`DELETE FROM google_connections c USING browser_sessions s
-    WHERE s.google_connection_id = c.id AND s.id = ${hash} AND s.expires_at > now()
-    RETURNING c.id AS connection_id, c.google_subject, c.google_account_email,
+  // Retain the durable account and event ledger; credentials and sync eligibility are erased.
+  const rows = await database()`WITH target AS MATERIALIZED (
+    SELECT c.id AS connection_id, c.google_subject, c.google_account_email,
       c.encrypted_access_token, c.encrypted_refresh_token, c.access_token_expires_at,
-      s.expires_at AS session_expires_at`;
+      s.expires_at AS session_expires_at FROM google_connections c JOIN browser_sessions s
+      ON s.google_connection_id = c.id WHERE s.id = ${hash} AND s.expires_at > now()
+      AND c.provider = 'google' AND c.disconnected_at IS NULL FOR UPDATE OF c
+  ), disconnected AS (
+    UPDATE google_connections SET encrypted_access_token = NULL, encrypted_refresh_token = NULL,
+      access_token_expires_at = NULL, disconnected_at = now(), updated_at = now()
+    WHERE id IN (SELECT connection_id FROM target)
+  ), sessions AS (
+    DELETE FROM browser_sessions WHERE google_connection_id IN (SELECT connection_id FROM target)
+  ), preferences AS (
+    DELETE FROM google_calendar_sync_preferences WHERE google_connection_id IN (SELECT connection_id FROM target)
+  ), leases AS (
+    DELETE FROM google_calendar_sync_leases WHERE google_connection_id IN (SELECT connection_id FROM target)
+  ) SELECT * FROM target`;
   return (rows[0] as StoredSession | undefined) ?? null;
 }

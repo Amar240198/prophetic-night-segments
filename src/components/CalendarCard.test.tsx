@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import "fake-indexeddb/auto";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { calculateNightSegments } from "@prophetic-night/night-engine";
 import { CalendarCard } from "./CalendarCard";
@@ -50,7 +51,7 @@ it("downloads only selected events and updates the Dawud window", async () => {
   );
   fireEvent.click(screen.getByLabelText(/Go Back to Sleep/));
   fireEvent.click(screen.getByRole("button", { name: /Download Calendar/ }));
-  expect(click).toHaveBeenCalledOnce();
+  await waitFor(() => expect(click).toHaveBeenCalledOnce());
   const blob = createObjectURL.mock.calls[0]![0] as Blob;
   const contents = await new Promise<string>((resolve) => {
     const reader = new FileReader();
@@ -62,7 +63,7 @@ it("downloads only selected events and updates the Dawud window", async () => {
   expect(contents).not.toContain("SUMMARY:Sixth of the Night");
   rerender(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
   expect(screen.queryByLabelText(/Go Back to Sleep/)).not.toBeInTheDocument();
-  expect(screen.getAllByRole("link", { hidden: true })).toHaveLength(3);
+  expect(screen.queryAllByRole("link", { hidden: true })).toHaveLength(0);
 });
 
 it("offers all six night duration checkboxes in boundary order", () => {

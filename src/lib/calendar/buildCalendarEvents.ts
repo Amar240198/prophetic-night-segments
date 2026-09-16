@@ -1,5 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
 import type { NightCalculationResult } from "@prophetic-night/night-engine";
+import { maghribServiceDate } from "./ownership";
 
 export const NIGHT_PART_TITLES = {
   "night-part-1": "Night — Part 1",
@@ -14,6 +15,10 @@ export type CalendarEventId =
   NightPartEventId | "wake" | "last-third" | "final-sixth" | "prayer" | "fajr" | "sleep";
 export interface CalendarEvent {
   id: string;
+  /** Maghrib-associated night, not the civil date of this event. */
+  serviceDate?: string;
+  /** Export identity, assigned once by the persistent export registry. */
+  appEventId?: string;
   title: string;
   start: string;
   end: string;
@@ -87,6 +92,7 @@ export function buildCalendarEvents(
     end?: string,
   ): CalendarEvent => ({
     id,
+    serviceDate: maghribServiceDate(result.night.start, timeZone),
     title,
     start,
     end: end ?? start,
