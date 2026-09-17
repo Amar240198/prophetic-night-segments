@@ -25,6 +25,10 @@ export const GOOGLE_EVENT_TITLES = {
   "prayer-asr": "Asr",
   "prayer-maghrib": "Maghrib",
   "prayer-isha": "Isha",
+  "fasting-monday": "Fasting — Monday",
+  "fasting-thursday": "Fasting — Thursday",
+  "fasting-white-day": "Fasting — White Day",
+  "fasting-dawud": "Fasting — Dāwūd schedule",
 } as const;
 export type GoogleEventId = keyof typeof GOOGLE_EVENT_TITLES;
 const DAWUD_CONTEXT =

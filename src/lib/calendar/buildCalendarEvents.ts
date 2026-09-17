@@ -23,7 +23,12 @@ export type CalendarEventId =
   | "prayer-dhuhr"
   | "prayer-asr"
   | "prayer-maghrib"
-  | "prayer-isha";
+  | "prayer-isha"
+  | "fasting-monday"
+  | "fasting-thursday"
+  | "fasting-white-day"
+  | "fasting-dawud";
+
 export interface CalendarEvent {
   id: string;
   /** Night events use the immutable Maghrib-associated date. Daily prayers use their civil date. */
@@ -49,6 +54,39 @@ export interface DailyPrayerSchedule {
   asr: string;
   maghrib: string;
   isha: string;
+}
+
+export function buildFastingCalendarEvent(
+  date: string,
+  kind: string,
+  timeZone: string,
+): CalendarEvent {
+  const start = Temporal.PlainDateTime.from(`${date}T00:00:00`)
+    .toZonedDateTime(timeZone)
+    .toInstant()
+    .toString();
+  const end = Temporal.PlainDateTime.from(`${date}T23:59:00`)
+    .toZonedDateTime(timeZone)
+    .toInstant()
+    .toString();
+  const title =
+    kind === "fasting-monday"
+      ? "Fasting — Monday"
+      : kind === "fasting-thursday"
+        ? "Fasting — Thursday"
+        : kind === "fasting-dawud"
+          ? "Fasting — Dāwūd schedule"
+          : "Fasting — White Day";
+  return {
+    id: kind,
+    serviceDate: date,
+    identityScope: "daily-prayer",
+    title,
+    start,
+    end,
+    description: `Optional fasting schedule for ${date}.`,
+    timeZone,
+  };
 }
 
 const DAILY_PRAYER_TITLES = {

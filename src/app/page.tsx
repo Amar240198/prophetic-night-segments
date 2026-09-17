@@ -7,6 +7,8 @@ import type { SyncContext, SyncSource } from "@/lib/google-calendar/sync";
 import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
 import { CalendarCard } from "@/components/CalendarCard";
 import { AllPrayersCard } from "@/components/AllPrayersCard";
+import { FastingCard } from "@/components/FastingCard";
+import { RoutinesCard } from "@/components/RoutinesCard";
 import { NightEndTimeline } from "@/components/ScheduleTools";
 import { useMemo, useState } from "react";
 
@@ -672,6 +674,12 @@ export default function Home() {
         <a href="#sixth-of-the-night" className="hover:text-white">
           Sixth of the Night
         </a>
+        <a href="#fasting" className="hover:text-white">
+          Fasting
+        </a>
+        <a href="#routines" className="hover:text-white">
+          Routines
+        </a>
         <a href="#calendar" className="hover:text-white">
           Calendar
         </a>
@@ -1180,6 +1188,11 @@ export default function Home() {
             </p>
           )}
         </section>
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <FastingCard date={serviceDate} timeZone={providerInfo?.timeZone ?? "Europe/London"} />
+          <RoutinesCard />
+        </div>
 
         {result && (
           <>
