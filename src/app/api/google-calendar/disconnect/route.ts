@@ -11,9 +11,11 @@ import {
 } from "@/lib/google-calendar/session.server";
 import { deleteConnection, deleteSession } from "@/lib/google-calendar/database.server";
 import { decryptToken } from "@/lib/google-calendar/tokens.server";
+import { assertCalendarMutationsEnabled } from "@/lib/google-calendar/maintenance.server";
 export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
+    assertCalendarMutationsEnabled();
     assertSameOrigin(request);
   } catch (error) {
     return errorResponse(error);

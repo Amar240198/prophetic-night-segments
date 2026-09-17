@@ -98,6 +98,34 @@ it("requires explicit selection, submits only chosen events, and disconnects", a
   expect(await screen.findByText(/Google Calendar disconnected/)).toBeInTheDocument();
 });
 
+it("shows the maintenance message when the server fences calendar changes", async () => {
+  const fetchMock = vi
+    .fn()
+    .mockResolvedValueOnce(json({ connected: true, configured: true, email: "user@example.com" }))
+    .mockResolvedValueOnce(
+      json(
+        {
+          error: {
+            code: "CALENDAR_MAINTENANCE",
+            message:
+              "Calendar changes are temporarily unavailable during maintenance. Please try again shortly.",
+          },
+        },
+        false,
+      ),
+    );
+  vi.stubGlobal("fetch", fetchMock);
+  render(<GoogleCalendarSection events={events} valid />);
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
+  );
+  fireEvent.click(screen.getByLabelText(/Fajr/));
+  fireEvent.click(screen.getByRole("button", { name: "Add selected events (1)" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Calendar changes are temporarily unavailable during maintenance. Please try again shortly.",
+  );
+});
+
 it("reports partial failures and preserves successful outcomes", async () => {
   vi.stubGlobal(
     "fetch",

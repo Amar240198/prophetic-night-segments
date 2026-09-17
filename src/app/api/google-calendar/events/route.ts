@@ -17,12 +17,14 @@ import {
   readSession,
   SESSION_COOKIE,
 } from "@/lib/google-calendar/session.server";
+import { assertCalendarMutationsEnabled } from "@/lib/google-calendar/maintenance.server";
 export const runtime = "nodejs";
 export const maxDuration = 120;
 export async function POST(request: NextRequest) {
   const owner = randomUUID();
   let connection: string | undefined;
   try {
+    assertCalendarMutationsEnabled();
     assertSameOrigin(request);
     const session = await readSession(request);
     const input = await readBoundedJson(request);

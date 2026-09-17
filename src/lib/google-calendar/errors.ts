@@ -1,4 +1,6 @@
 export const GOOGLE_MESSAGES = {
+  CALENDAR_MAINTENANCE:
+    "Calendar changes are temporarily unavailable during maintenance. Please try again shortly.",
   SERVICE_DATE_REQUIRED:
     "Reload the night planner before adding or removing events. The original Maghrib night date is required.",
   IDENTITY_CONFLICT:

@@ -8,10 +8,12 @@ import {
 import { readBoundedJson } from "@/lib/google-calendar/events.server";
 import { validateSyncRequest } from "@/lib/google-calendar/sync-plan.server";
 import { syncCalendar } from "@/lib/google-calendar/sync.server";
+import { assertCalendarMutationsEnabled } from "@/lib/google-calendar/maintenance.server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
 export async function POST(request: NextRequest) {
   try {
+    assertCalendarMutationsEnabled();
     assertSameOrigin(request);
     const input = validateSyncRequest(await readBoundedJson(request));
     const session = await readSession(request);

@@ -1018,6 +1018,7 @@ import { removeCalendarEvents } from "../../src/lib/google-calendar/removal.serv
 import { googleEventPayload } from "../../src/lib/google-calendar/events.server";
 import { readSession } from "../../src/lib/google-calendar/session.server";
 import { syncGoogleEvent } from "../../src/lib/google-calendar/sync-event.server";
+import { assertCalendarMutationsEnabled } from "../../src/lib/google-calendar/maintenance.server";
 import {
   saveSyncPreference,
   readSyncSelection,
@@ -2293,6 +2294,56 @@ describe("ownership reconciliation and write fencing", () => {
       "2026-02-28",
     );
     expect((await readSyncSelection(active.connectionId)).selected).toEqual([]);
+  });
+});
+
+describe("calendar mutation maintenance fence", () => {
+  it("returns 503 before database, Google, OAuth, or token-revocation work", async () => {
+    vi.stubEnv("CALENDAR_MUTATIONS_PAUSED", "true");
+    const cookie = await sessionCookie();
+    const callsBefore = vi.mocked(fetch).mock.calls.length;
+    const cases = [
+      ["events", { events: [event] }],
+      ["sync", syncInput],
+      ["remove", { scope: "night", selected: [event.id], startDate: "2026-03-28" }],
+      ["disconnect", undefined],
+      ["connect", undefined],
+      ["callback?code=unexpected&state=unexpected", undefined],
+    ] as const;
+    for (const [path, body] of cases) {
+      const response = await (path.startsWith("callback") || path === "connect"
+        ? (path.startsWith("callback") ? callback : connect)(
+            request(path, { cookie, ...(body ? { body } : {}) }),
+          )
+        : path === "events"
+          ? events(request(path, { cookie, body }))
+          : path === "sync"
+            ? sync(request(path, { cookie, body }))
+            : path === "remove"
+              ? remove(request(path, { cookie, body }))
+              : disconnect(request(path, { cookie })));
+      expect(response.status, path).toBe(503);
+      expect(await response.json()).toEqual({
+        error: {
+          code: "CALENDAR_MAINTENANCE",
+          message:
+            "Calendar changes are temporarily unavailable during maintenance. Please try again shortly.",
+        },
+      });
+    }
+    expect(vi.mocked(fetch).mock.calls.length).toBe(callsBefore);
+    expect((await db.query("SELECT count(*)::int AS n FROM google_connections")).rows[0]!.n).toBe(
+      1,
+    );
+    expect((await db.query("SELECT count(*)::int AS n FROM browser_sessions")).rows[0]!.n).toBe(1);
+  });
+
+  it("is disabled unless the environment value is exactly true", () => {
+    for (const value of [undefined, "false", "TRUE", "1"]) {
+      if (value === undefined) vi.unstubAllEnvs();
+      else vi.stubEnv("CALENDAR_MUTATIONS_PAUSED", value);
+      expect(() => assertCalendarMutationsEnabled()).not.toThrow();
+    }
   });
 });
 
