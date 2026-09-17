@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from "node:crypto";
 import { cookies } from "next/headers";
+import { NextRequest } from "next/server";
 import { database } from "@/lib/google-calendar/database.server";
 const COOKIE = "miqaat_session";
 const MAX_AGE = 60 * 60 * 24 * 30;
@@ -59,4 +60,9 @@ export function normaliseEmail(value: unknown): string {
 }
 export function validPassword(value: unknown): value is string {
   return typeof value === "string" && value.length >= 12 && value.length <= 200;
+}
+
+export function assertSameOrigin(request: NextRequest): void {
+  const origin = request.headers.get("origin");
+  if (origin && origin !== new URL(request.url).origin) throw new Error("CROSS_ORIGIN");
 }

@@ -1,9 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createUser, normaliseEmail, startSession, validPassword } from "@/lib/auth/session.server";
+import {
+  assertSameOrigin,
+  createUser,
+  normaliseEmail,
+  startSession,
+  validPassword,
+} from "@/lib/auth/session.server";
 import { hashPassword } from "@/lib/auth/password.server";
 export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
+    assertSameOrigin(request);
     const body = (await request.json()) as { email?: unknown; password?: unknown };
     const email = normaliseEmail(body.email);
     if (!validPassword(body.password))

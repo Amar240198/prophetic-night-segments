@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/lib/google-calendar/database.server";
-import { readAppUser } from "@/lib/auth/session.server";
+import { assertSameOrigin, readAppUser } from "@/lib/auth/session.server";
 export const runtime = "nodejs";
 function responseError(status = 401) {
   return NextResponse.json(
@@ -21,13 +21,20 @@ export async function GET() {
   return NextResponse.json({ preferences: rows[0] ?? null });
 }
 export async function PUT(request: NextRequest) {
+  try {
+    assertSameOrigin(request);
+  } catch {
+    return responseError(403);
+  }
   const user = await readAppUser();
   if (!user) return responseError();
   const body = (await request.json()) as Record<string, unknown>;
   if (
     !Array.isArray(body.selectedPrayers) ||
     body.selectedPrayers.length > 5 ||
-    body.selectedPrayers.some((value) => typeof value !== "string")
+    body.selectedPrayers.some(
+      (value) => !["fajr", "dhuhr", "asr", "maghrib", "isha"].includes(value as string),
+    )
   )
     return responseError(400);
   const horizon = body.defaultSyncHorizon;
