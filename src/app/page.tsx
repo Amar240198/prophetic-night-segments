@@ -6,6 +6,7 @@ import type { NightCalculationInput, NightCalculationResult } from "@prophetic-n
 import type { SyncContext, SyncSource } from "@/lib/google-calendar/sync";
 import { demoPrayerTimes } from "@prophetic-night/prayer-providers";
 import { CalendarCard } from "@/components/CalendarCard";
+import { AllPrayersCard } from "@/components/AllPrayersCard";
 import { NightEndTimeline } from "@/components/ScheduleTools";
 import { useMemo, useState } from "react";
 
@@ -41,6 +42,16 @@ type LivePrayerTimes = {
   juristicSchool: string;
   source: string;
   serviceDate: string;
+  dailyPrayerTimes?: {
+    serviceDate: string;
+    fajr: string;
+    sunrise: string;
+    dhuhr: string;
+    asrStandard?: string;
+    asr?: string;
+    maghrib: string;
+    isha: string;
+  };
 };
 
 type CoordinateCalculationResponse = NightCalculationResult & {
@@ -648,6 +659,23 @@ export default function Home() {
 
   return (
     <main className="min-h-screen min-w-0 overflow-x-hidden bg-[#07171d] text-[#e4ece9]">
+      <nav
+        className="mx-auto flex max-w-7xl gap-4 border-b border-white/10 px-4 py-4 text-sm text-[#9baca7] sm:px-8"
+        aria-label="Miqāt modules"
+      >
+        <a href="#today" className="hover:text-white">
+          Today
+        </a>
+        <a href="#all-prayers" className="hover:text-white">
+          All Prayers
+        </a>
+        <a href="#sixth-of-the-night" className="hover:text-white">
+          Sixth of the Night
+        </a>
+        <a href="#calendar" className="hover:text-white">
+          Calendar
+        </a>
+      </nav>
       <header className="border-b border-white/10 bg-[radial-gradient(circle_at_75%_0%,#173d47_0,transparent_35rem)]">
         <div className="mx-auto flex max-w-7xl flex-col items-center px-4 py-14 text-center sm:px-8 sm:py-28">
           <p className="mb-5 text-xs font-bold tracking-[0.24em] text-[#d0ae67]">
@@ -1113,6 +1141,27 @@ export default function Home() {
               </div>
             </div>
           )}
+          {providerInfo?.dailyPrayerTimes && (
+            <div id="today" className="mt-6">
+              <AllPrayersCard
+                schedule={{
+                  date: providerInfo.dailyPrayerTimes.serviceDate,
+                  timeZone: providerInfo.timeZone,
+                  source: providerInfo.source,
+                  fajr: providerInfo.dailyPrayerTimes.fajr,
+                  sunrise: providerInfo.dailyPrayerTimes.sunrise,
+                  dhuhr: providerInfo.dailyPrayerTimes.dhuhr,
+                  asr:
+                    providerInfo.dailyPrayerTimes.asr ??
+                    providerInfo.dailyPrayerTimes.asrStandard ??
+                    "00:00",
+                  maghrib: providerInfo.dailyPrayerTimes.maghrib,
+                  isha: providerInfo.dailyPrayerTimes.isha,
+                }}
+                syncContext={syncContext}
+              />
+            </div>
+          )}
           {providerError && (
             <p
               role="alert"
@@ -1453,13 +1502,15 @@ export default function Home() {
             )}
             {engineResult && submitted && (
               <>
-                <CalendarCard
-                  result={engineResult}
-                  syncContext={syncContext}
-                  dawudSelected={timelineView === "dawud"}
-                  prayerSource={providerInfo?.source ?? "Supplied prayer times"}
-                  firstAdhanMinutes={firstAdhanMinutes}
-                />
+                <div id="sixth-of-the-night">
+                  <CalendarCard
+                    result={engineResult}
+                    syncContext={syncContext}
+                    dawudSelected={timelineView === "dawud"}
+                    prayerSource={providerInfo?.source ?? "Supplied prayer times"}
+                    firstAdhanMinutes={firstAdhanMinutes}
+                  />
+                </div>
               </>
             )}
           </>

@@ -57,6 +57,7 @@ export function generateICS(events: readonly CalendarEvent[], generatedAt: strin
         "X-SIXTH-OWNERSHIP-VERSION:1",
         `X-SIXTH-APP-EVENT-ID:${event.appEventId}`,
         `X-SIXTH-SERVICE-DATE:${event.serviceDate}`,
+        `X-SIXTH-IDENTITY-SCOPE:${event.identityScope ?? "night"}`,
         `DTSTAMP:${calendarInstant(generatedAt)}`,
         `DTSTART:${calendarInstant(event.start)}`,
         ...(Temporal.Instant.compare(event.end, event.start) > 0

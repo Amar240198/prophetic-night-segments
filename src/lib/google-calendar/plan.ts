@@ -3,6 +3,8 @@ import {
   buildCalendarEvents,
   NIGHT_PART_TITLES,
   type CalendarEvent,
+  buildDailyPrayerEvents,
+  type DailyPrayerSchedule,
 } from "@/lib/calendar/buildCalendarEvents";
 
 export const GOOGLE_EVENT_TITLES = {
@@ -18,6 +20,11 @@ export const GOOGLE_EVENT_TITLES = {
   fajr: "Fajr",
   "final-sixth": "Sixth of the Night — Final Sixth",
   prayer: "Qiyam / Tahajjud — Prayer Window",
+  "prayer-fajr": "Fajr",
+  "prayer-dhuhr": "Dhuhr",
+  "prayer-asr": "Asr",
+  "prayer-maghrib": "Maghrib",
+  "prayer-isha": "Isha",
 } as const;
 export type GoogleEventId = keyof typeof GOOGLE_EVENT_TITLES;
 const DAWUD_CONTEXT =
@@ -31,6 +38,7 @@ export function buildGooglePlan(
     prayerSource: string;
     fajrPreparationMinutes: number;
     firstAdhanMinutes: number | null;
+    dailyPrayerSchedule?: DailyPrayerSchedule;
   },
 ): CalendarEvent[] {
   const base = buildCalendarEvents(result, {
@@ -83,5 +91,6 @@ export function buildGooglePlan(
       result.dawudPattern.finalSleep.start,
       true,
     ),
+    ...(options.dailyPrayerSchedule ? buildDailyPrayerEvents(options.dailyPrayerSchedule) : []),
   ];
 }

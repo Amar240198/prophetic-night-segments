@@ -34,17 +34,21 @@ export function GoogleCalendarSection({
   syncContext,
   syncOptions,
   localNight,
+  moduleTitle = "Qiyam / Tahajjud Plan",
+  defaultSelected = [],
 }: {
   events: CalendarEvent[];
   valid: boolean;
   syncContext?: SyncContext | null;
   syncOptions?: SyncOptions;
   localNight?: string;
+  moduleTitle?: string;
+  defaultSelected?: string[];
 }) {
   const [connection, setConnection] = useState<Connection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selected, setSelected] = useState<string[]>(defaultSelected);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -484,7 +488,7 @@ export function GoogleCalendarSection({
               onClick={() => setReviewing(!reviewing)}
               aria-expanded={reviewing}
             >
-              Add Qiyam / Tahajjud Plan to Calendar
+              Add {moduleTitle} to Calendar
             </button>
             <button
               type="button"

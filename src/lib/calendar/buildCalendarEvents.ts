@@ -12,11 +12,24 @@ export const NIGHT_PART_TITLES = {
 } as const;
 export type NightPartEventId = keyof typeof NIGHT_PART_TITLES;
 export type CalendarEventId =
-  NightPartEventId | "wake" | "last-third" | "final-sixth" | "prayer" | "fajr" | "sleep";
+  | NightPartEventId
+  | "wake"
+  | "last-third"
+  | "final-sixth"
+  | "prayer"
+  | "fajr"
+  | "sleep"
+  | "prayer-fajr"
+  | "prayer-dhuhr"
+  | "prayer-asr"
+  | "prayer-maghrib"
+  | "prayer-isha";
 export interface CalendarEvent {
   id: string;
-  /** Maghrib-associated night, not the civil date of this event. */
+  /** Night events use the immutable Maghrib-associated date. Daily prayers use their civil date. */
   serviceDate?: string;
+  /** Explicit identity scope keeps daily prayer dates separate from night service dates. */
+  identityScope?: "night" | "daily-prayer";
   /** Export identity, assigned once by the persistent export registry. */
   appEventId?: string;
   title: string;
@@ -24,6 +37,57 @@ export interface CalendarEvent {
   end: string;
   description: string;
   timeZone: string;
+}
+
+export interface DailyPrayerSchedule {
+  date: string;
+  timeZone: string;
+  source: string;
+  fajr: string;
+  sunrise: string;
+  dhuhr: string;
+  asr: string;
+  maghrib: string;
+  isha: string;
+}
+
+const DAILY_PRAYER_TITLES = {
+  "prayer-fajr": "Fajr",
+  "prayer-dhuhr": "Dhuhr",
+  "prayer-asr": "Asr",
+  "prayer-maghrib": "Maghrib",
+  "prayer-isha": "Isha",
+} as const;
+
+/** Build civil-date prayer events from the same provider timetable used by the night engine. */
+export function buildDailyPrayerEvents(schedule: DailyPrayerSchedule): CalendarEvent[] {
+  const date = Temporal.PlainDate.from(schedule.date);
+  const at = (clock: string) =>
+    Temporal.PlainDateTime.from(`${date.toString()}T${clock.length === 5 ? `${clock}:00` : clock}`)
+      .toZonedDateTime(schedule.timeZone, { disambiguation: "reject" })
+      .toInstant()
+      .toString();
+  const description = [
+    "Daily prayer timetable provided by the configured prayer source.",
+    `Civil prayer date: ${schedule.date}`,
+    `Prayer source: ${schedule.source}`,
+    `Timezone: ${schedule.timeZone}`,
+    "Sunrise is informational and is not an obligatory prayer event.",
+  ].join("\n");
+  return (Object.keys(DAILY_PRAYER_TITLES) as Array<keyof typeof DAILY_PRAYER_TITLES>).map((id) => {
+    const field = id.replace("prayer-", "") as "fajr" | "dhuhr" | "asr" | "maghrib" | "isha";
+    const instant = at(schedule[field]);
+    return {
+      id,
+      serviceDate: schedule.date,
+      identityScope: "daily-prayer" as const,
+      title: DAILY_PRAYER_TITLES[id],
+      start: instant,
+      end: instant,
+      description,
+      timeZone: schedule.timeZone,
+    };
+  });
 }
 export interface CalendarOptions {
   wakeBufferMinutes: number;

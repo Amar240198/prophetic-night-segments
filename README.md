@@ -139,3 +139,15 @@ Separate removal controls remove checked app-owned events from this night or a c
 mappings and tombstones for retry. The explicit remove-all control includes retired types
 from the persisted ledger within the chosen horizon. Unverified events remain untouched.
 Migration 004 must be applied before deploying this version; see the linked rollout steps.
+
+### Miqāt daily foundation
+
+The dashboard now includes an **All Prayers** module alongside Sixth of the Night. It
+consumes the configured provider timetable for Fajr, Sunrise, Dhuhr, Asr, Maghrib and
+Isha. Sunrise is informational; only the five obligatory prayers are selectable for
+calendar export and synchronisation. Daily prayer events use civil prayer dates and
+`prayer-*` machine event kinds, while night events retain their immutable Maghrib
+service-date identity. Both paths use the same ownership ledger, signed metadata,
+duplicate prevention, conditional updates and verified removal. Preferences and plan
+entitlements are validated in `src/lib/product`; payment charging and application-user
+authentication are intentionally deferred to a later phase.

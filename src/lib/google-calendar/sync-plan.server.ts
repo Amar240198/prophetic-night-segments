@@ -9,6 +9,7 @@ import {
 import { getLondonUnifiedPrayerTimes } from "@/lib/providers/london-unified";
 import { GoogleCalendarError } from "./errors";
 import { buildGooglePlan, GOOGLE_EVENT_TITLES, type GoogleEventId } from "./plan";
+import type { DailyPrayerSchedule } from "@/lib/calendar/buildCalendarEvents";
 import {
   DEFAULT_SYNC_NIGHTS,
   MAX_SYNC_NIGHTS,
@@ -162,7 +163,22 @@ export function syncDates(startDate: string, nights: number): string[] {
 
 export async function loadSyncNight(source: SyncSource, date: string) {
   if (source.kind === "coordinates") {
-    return new IslamicAppPrayerTimeProvider().getPrayerTimes({ ...source, serviceDate: date });
+    const times = await new IslamicAppPrayerTimeProvider().getPrayerTimes({
+      ...source,
+      serviceDate: date,
+    });
+    return {
+      ...times,
+      dailyPrayerSchedule: times.dailyPrayerTimes
+        ? ({
+            date,
+            timeZone: times.timeZone,
+            source: times.source,
+            ...times.dailyPrayerTimes,
+            asr: times.dailyPrayerTimes.asrStandard,
+          } satisfies DailyPrayerSchedule)
+        : undefined,
+    };
   }
   const times =
     source.kind === "london-unified"
@@ -173,6 +189,18 @@ export async function loadSyncNight(source: SyncSource, date: string) {
     fajr: times.fajr.iso,
     timeZone: times.timezone,
     source: times.source,
+    dailyPrayerSchedule: times.dailyPrayerTimes
+      ? ({
+          date,
+          timeZone: times.timezone,
+          source: times.source,
+          ...times.dailyPrayerTimes,
+          asr:
+            "asr" in times.dailyPrayerTimes
+              ? times.dailyPrayerTimes.asr
+              : times.dailyPrayerTimes.asrStandard,
+        } satisfies DailyPrayerSchedule)
+      : undefined,
   };
 }
 
@@ -187,7 +215,9 @@ export async function calculateSyncNight(input: SyncRequest, date: string, load 
   )
     throw new GoogleCalendarError("PRAYER_TIMES_UNAVAILABLE");
   const result = calculateNightSegments(times);
-  return buildGooglePlan(result, { ...input.options, prayerSource: times.source }).filter((event) =>
-    input.selected.includes(event.id as GoogleEventId),
-  );
+  return buildGooglePlan(result, {
+    ...input.options,
+    prayerSource: times.source,
+    dailyPrayerSchedule: times.dailyPrayerSchedule,
+  }).filter((event) => input.selected.includes(event.id as GoogleEventId));
 }

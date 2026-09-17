@@ -66,6 +66,7 @@ export function googleOwnershipMetadata(mapping: ExternalCalendarMapping): Recor
     connectionId: mapping.connectionId,
     planEvent: mapping.eventKind,
     localNight: mapping.serviceDate,
+    identityScope: mapping.eventKind.startsWith("prayer-") ? "daily-prayer" : "night",
     ownershipKeyId: active,
     ownershipProof: signature(mapping, keys[active]!),
   };
@@ -84,7 +85,9 @@ export const googleOwnershipAdapter: CalendarOwnershipAdapter<GoogleOwnedEvent> 
       !p ||
       p.application !== CALENDAR_APPLICATION ||
       p.planEvent !== mapping.eventKind ||
-      p.localNight !== mapping.serviceDate
+      p.localNight !== mapping.serviceDate ||
+      (p.ownershipVersion !== undefined &&
+        p.identityScope !== (mapping.eventKind.startsWith("prayer-") ? "daily-prayer" : "night"))
     )
       return false;
     // A persisted legacy mapping plus matching original markers is recognized forever.

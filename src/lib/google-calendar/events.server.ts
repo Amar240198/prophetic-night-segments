@@ -37,7 +37,10 @@ export function validateSelectedEvents(value: unknown): CalendarEvent[] {
       item.timeZone.length > 100 ||
       typeof item.description !== "string" ||
       item.description.length > 6000 ||
-      (item.serviceDate !== undefined && !isServiceDate(item.serviceDate))
+      (item.serviceDate !== undefined && !isServiceDate(item.serviceDate)) ||
+      (item.identityScope !== undefined &&
+        item.identityScope !== "night" &&
+        item.identityScope !== "daily-prayer")
     )
       throw new GoogleCalendarError("INVALID_REQUEST");
     seen.add(item.id);
@@ -56,6 +59,7 @@ export function validateSelectedEvents(value: unknown): CalendarEvent[] {
       return {
         id: item.id,
         ...(item.serviceDate ? { serviceDate: item.serviceDate } : {}),
+        ...(item.identityScope ? { identityScope: item.identityScope } : {}),
         title: GOOGLE_EVENT_TITLES[item.id as GoogleEventId],
         start: start.toString(),
         end: end.toString(),
