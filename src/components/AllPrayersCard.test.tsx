@@ -30,12 +30,12 @@ describe("All Prayers card", () => {
     expect(screen.getByText(/Next prayer/)).toBeInTheDocument();
   });
 
-  it("supports selecting an individual prayer and Add all prayers", () => {
+  it("supports selecting an individual prayer and Select all", () => {
     render(<AllPrayersCard schedule={schedule} />);
     const boxes = screen.getAllByRole("checkbox");
     fireEvent.click(boxes[0]!);
     expect(boxes[0]).not.toBeChecked();
-    fireEvent.click(screen.getAllByRole("button", { name: "Add all prayers" })[0]!);
+    fireEvent.click(screen.getAllByRole("button", { name: "Select all" })[0]!);
     expect(boxes.every((box) => (box as HTMLInputElement).checked)).toBe(true);
   });
 });

@@ -3,9 +3,8 @@ import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
-  title: "Prophetic Night Segments",
-  description:
-    "A provider-agnostic visualisation of six night portions, three thirds, and the Dāwūd night pattern.",
+  title: "Miqāt — Islamic time, organised",
+  description: "Prayer times, Qiyām, fasting, routines and calendar automation — in one place.",
 };
 
 export default function RootLayout({

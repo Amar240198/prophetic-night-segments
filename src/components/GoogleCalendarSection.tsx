@@ -1,5 +1,6 @@
 "use client";
 
+import { recordCalendarSync } from "./app/calendarStatus";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 import { formatCalendarTime } from "@/lib/calendar/buildCalendarEvents";
@@ -345,6 +346,7 @@ export function GoogleCalendarSection({
       )
         throw new Error();
       setSyncReport(body);
+      recordCalendarSync(`${body.syncedNights} of ${body.nights} nights fully synced`);
       acceptSelection(body.syncSelection);
       const failed = body.outcomes.filter(
         (item: { status: string }) => item.status === "failed",

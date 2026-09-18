@@ -3,7 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "../../src/app/page";
+import Home from "../../src/app/sixth/page";
 
 afterEach(() => {
   cleanup();
@@ -38,11 +38,9 @@ describe("Prophetic Night Segments interface", () => {
     render(<Home />);
 
     expect(
-      screen.getByRole("heading", { level: 1, name: "Prophetic Night Segments" }),
+      screen.getByRole("heading", { level: 1, name: "Sixth of the Night" }),
     ).toBeInTheDocument();
-    expect(
-      screen.getByText(/One night, shown through its conventional thirds/),
-    ).toBeInTheDocument();
+    expect(screen.getByText(/Maghrib to following Fajr/)).toBeInTheDocument();
     expect(screen.getByText(/published 2026 London Unified timetable/)).toBeInTheDocument();
     expect(screen.queryByLabelText("Fajr preparation buffer")).not.toBeInTheDocument();
   });

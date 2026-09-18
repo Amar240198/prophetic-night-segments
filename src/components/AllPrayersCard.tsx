@@ -138,7 +138,7 @@ export function AllPrayersCard({
           className="border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67]"
           onClick={() => updateSelection(requiredIds)}
         >
-          Add all prayers
+          Select all
         </button>
         <button
           type="button"

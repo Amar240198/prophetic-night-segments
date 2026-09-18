@@ -4,6 +4,7 @@ import { buildFastingCalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 import { assignExportIdentities } from "@/lib/calendar/exportIdentity";
 import { generateICS } from "@/lib/calendar/generateICS";
 import { fastingDates, type FastingProgramme } from "@/lib/fasting/schedule";
+import { useFastingSettings } from "./app/useFastingSettings";
 import { GoogleCalendarSection } from "./GoogleCalendarSection";
 
 const choices: Array<[FastingProgramme, string]> = [
@@ -19,9 +20,7 @@ export function FastingCard({
   date?: string;
   timeZone?: string;
 }) {
-  const [selected, setSelected] = useState<FastingProgramme[]>(["monday", "thursday"]);
-  const [anchorDate, setAnchorDate] = useState(date);
-  const [anchorFasting, setAnchorFasting] = useState(true);
+  const { selected, anchorDate, anchorFasting, save } = useFastingSettings(date);
   const [showCalendar, setShowCalendar] = useState(false);
   const upcoming = useMemo(
     () =>
@@ -59,9 +58,11 @@ export function FastingCard({
               type="checkbox"
               checked={selected.includes(id)}
               onChange={(e) =>
-                setSelected((current) =>
-                  e.target.checked ? [...current, id] : current.filter((value) => value !== id),
-                )
+                save({
+                  selected: e.target.checked
+                    ? [...selected, id]
+                    : selected.filter((value) => value !== id),
+                })
               }
             />
             {label}
@@ -75,7 +76,7 @@ export function FastingCard({
             <input
               type="date"
               value={anchorDate}
-              onChange={(e) => setAnchorDate(e.target.value)}
+              onChange={(e) => save({ anchorDate: e.target.value })}
               className="border border-white/20 bg-[#06151a] px-3 py-2"
             />
           </label>
@@ -83,12 +84,13 @@ export function FastingCard({
             <input
               type="checkbox"
               checked={anchorFasting}
-              onChange={(e) => setAnchorFasting(e.target.checked)}
+              onChange={(e) => save({ anchorFasting: e.target.checked })}
             />
             Starting date is a fasting day
           </label>
         </div>
       )}
+      <h3 className="mt-6 font-semibold">Upcoming fasting dates</h3>
       <ul className="mt-5 grid gap-2 text-sm">
         {upcoming.map((item) => (
           <li key={`${item.date}-${item.kind}`} className="border border-white/10 px-3 py-2">
@@ -114,6 +116,7 @@ export function FastingCard({
           </button>
         )}
       </div>
+      <p className="mt-5 text-sm text-[#9baca7]">Ramadan planning is coming later.</p>
       {showCalendar && events[0] && (
         <GoogleCalendarSection
           key={events[0].id + events[0].serviceDate}

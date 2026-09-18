@@ -151,3 +151,13 @@ service-date identity. Both paths use the same ownership ledger, signed metadata
 duplicate prevention, conditional updates and verified removal. Preferences and plan
 entitlements are validated in `src/lib/product`; payment charging and application-user
 authentication are intentionally deferred to a later phase.
+
+## Miqāt application routes
+
+The public landing page (`/`) introduces the product. The free calculator at `/sixth` and basic prayer and Sixth screens at `/app/prayers` and `/app/sixth` remain accessible without an account. `/app` (Today), `/app/fasting`, `/app/routines`, and `/app/calendar` require the existing Miqāt session and redirect to `/app/account` with a validated return route. Google Calendar authentication remains separate and continues to work in the anonymous calculator.
+
+The persistent application layout shares one prayer workspace between module routes. Today contains summaries; source configuration lives in module settings. Desktop uses a sidebar, while mobile uses Today / Prayer / Sixth / More navigation. Ramadan and Mosques are labelled future items without fake routes.
+
+Routines retain their existing device-local storage, now with an expanded editor and enable/disable actions. Fasting programme choices are also stored on this device and shared with Today. Account export includes existing server preferences/routines and device data. Self-service account deletion, Pro checkout and routine calendar sync are not implemented by this frontend refactor. Calendar sync and verified app-owned cleanup reuse the existing Google component, event builders and server APIs unchanged. Last-sync summaries describe operations recorded in the current browser tab, not a server-wide audit history. Continuous sync retains its existing manual-renewal limitation.
+
+No database migration is required for this routing and presentation change.
