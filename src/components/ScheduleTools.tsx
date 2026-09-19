@@ -65,17 +65,9 @@ export function NightEndTimeline({
   return (
     <section
       className="mt-7 border border-white/10 bg-[#0c2229] p-5 sm:p-7"
-      aria-labelledby="night-end-title"
+      aria-label="Fajr and wake schedule"
     >
-      <p className="text-xs font-bold tracking-[0.16em] text-[#d0ae67]">END OF NIGHT</p>
-      <h3 id="night-end-title" className="mt-2 font-serif text-2xl">
-        End of the calculated night
-      </h3>
-      <p className="mt-2 text-sm leading-6 text-[#9baca7]">
-        Events are shown in chronological order. Fajr remains the final boundary of the Islamic
-        night.
-      </p>
-      <ol className="mt-5 grid gap-2" aria-live="polite">
+      <ol className="grid gap-2" aria-live="polite">
         {schedule.map((event, index) => {
           const coincidesWithPrevious = index > 0 && schedule[index - 1]!.instant === event.instant;
           return (

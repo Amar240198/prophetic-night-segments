@@ -93,9 +93,9 @@ describe("Prophetic Night Segments interface", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
 
-    await screen.findByRole("heading", { name: "End of the calculated night" });
+    await screen.findByRole("region", { name: "Fajr and wake schedule" });
     const schedule = within(
-      screen.getByRole("region", { name: "End of the calculated night" }),
+      screen.getByRole("region", { name: "Fajr and wake schedule" }),
     ).getByRole("list");
     expect(schedule).toHaveTextContent("Buffer Wake-Up Time");
     expect(schedule).toHaveTextContent("Wake before Fajr");
