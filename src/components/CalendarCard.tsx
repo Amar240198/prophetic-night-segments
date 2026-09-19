@@ -14,7 +14,7 @@ export function CalendarCard({
   dawudSelected,
   prayerSource,
   firstAdhanMinutes = null,
-  wakeBufferMinutes = 15,
+  wakeBufferMinutes = 0,
   syncContext,
 }: {
   result: NightCalculationResult;

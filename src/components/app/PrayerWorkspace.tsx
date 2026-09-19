@@ -445,7 +445,8 @@ export function PrayerWorkspace({
   const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(null);
   const [submitted, setSubmitted] = useState<NightCalculationInput | null>(null);
   const [firstAdhanMinutes, setFirstAdhanMinutes] = useState<number | null>(null);
-  const [wakeBufferMinutes] = useState(15);
+  // No wake-up buffer is applied until the user explicitly selects one.
+  const [wakeBufferMinutes] = useState(0);
   const [timelineView, setTimelineView] = useState<"general" | "dawud" | "prophetic">("general");
 
   const calculation = useMemo(() => {

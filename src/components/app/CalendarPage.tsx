@@ -13,7 +13,7 @@ export function CalendarPage() {
   const { result, schedule, syncContext, settings } = useWorkspace();
   const [modules, setModules] = useState<string[]>(["prayers", "sixth"]);
   const options = {
-    wakeBufferMinutes: 15,
+    wakeBufferMinutes: 0,
     dawudSelected: false,
     fajrPreparationMinutes: 20,
     firstAdhanMinutes: null,
