@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import "fake-indexeddb/auto";
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { calculateNightSegments } from "@prophetic-night/night-engine";
 import { CalendarCard } from "./CalendarCard";
@@ -33,7 +33,7 @@ it("uses the selected night-map buffer and disables empty exports", () => {
   expect(screen.queryByLabelText("Wake-up buffer")).not.toBeInTheDocument();
   for (const checkbox of screen.getAllByRole("checkbox"))
     if ((checkbox as HTMLInputElement).checked) fireEvent.click(checkbox);
-  expect(screen.getByRole("button", { name: /Download Calendar/ })).toBeDisabled();
+  expect(screen.queryByRole("button", { name: /Download Calendar/ })).not.toBeInTheDocument();
 });
 
 it("uses the selected night-map buffer for generated events", () => {
@@ -48,28 +48,14 @@ it("uses the selected night-map buffer for generated events", () => {
   expect(screen.getByText(/01:30:00/)).toBeInTheDocument();
 });
 
-it("downloads only selected events and updates the Dawud window", async () => {
-  const createObjectURL = vi.fn().mockReturnValue("blob:calendar");
-  vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
-  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+it("updates the Dawud window without exposing an ICS download action", () => {
   const { rerender } = render(
     <CalendarCard result={result} dawudSelected={true} prayerSource="Manual" />,
   );
-  fireEvent.click(screen.getByLabelText(/Go Back to Sleep/));
-  fireEvent.click(screen.getByRole("button", { name: /Download Calendar/ }));
-  await waitFor(() => expect(click).toHaveBeenCalledOnce());
-  const blob = createObjectURL.mock.calls[0]![0] as Blob;
-  const contents = await new Promise<string>((resolve) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsText(blob);
-  });
-  expect(contents).toContain("SUMMARY:Qiyam / Tahajjud — Go Back to Sleep");
-  expect(contents).not.toContain("SUMMARY:Qiyam / Tahajjud — Prayer Window");
-  expect(contents).not.toContain("SUMMARY:Sixth of the Night");
+  expect(screen.getByLabelText(/Go Back to Sleep/)).toBeInTheDocument();
+  expect(screen.queryByRole("button", { name: /Download Calendar/ })).not.toBeInTheDocument();
   rerender(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
   expect(screen.queryByLabelText(/Go Back to Sleep/)).not.toBeInTheDocument();
-  expect(screen.queryAllByRole("link", { hidden: true })).toHaveLength(0);
 });
 
 it("offers all six night duration checkboxes in boundary order", () => {

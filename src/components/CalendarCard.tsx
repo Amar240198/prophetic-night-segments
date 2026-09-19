@@ -8,8 +8,6 @@ import { DEFAULT_BUFFER_BEFORE_FAJR_MINUTES } from "./ScheduleTools";
 import { buildGooglePlan } from "@/lib/google-calendar/plan";
 import type { NightCalculationResult } from "@prophetic-night/night-engine";
 import { buildCalendarEvents, formatCalendarTime } from "@/lib/calendar/buildCalendarEvents";
-import { generateICS } from "@/lib/calendar/generateICS";
-import { assignExportIdentities } from "@/lib/calendar/exportIdentity";
 
 export function CalendarCard({
   result,
@@ -27,7 +25,6 @@ export function CalendarCard({
   syncContext?: SyncContext | null;
 }) {
   const [selected, setSelected] = useState(["wake", "buffer-before-fajr", "last-third", "fajr"]);
-  const [downloadError, setDownloadError] = useState("");
   const minutes = firstAdhanMinutes ?? wakeBufferMinutes;
   const valid = Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440;
   const events = buildCalendarEvents(result, {
@@ -35,27 +32,6 @@ export function CalendarCard({
     pattern: dawudSelected ? "dawud" : "last-third",
     prayerSource,
   });
-  const chosen = events.filter((event) => selected.includes(event.id));
-  async function download() {
-    if (!valid || !chosen.length) return;
-    setDownloadError("");
-    try {
-      const url = URL.createObjectURL(
-        new Blob([generateICS(await assignExportIdentities(chosen), new Date().toISOString())], {
-          type: "text/calendar;charset=utf-8",
-        }),
-      );
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = "prophetic-night-segments-qiyam.ics";
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setDownloadError("The calendar file could not be downloaded. Please try again.");
-    }
-  }
   return (
     <section
       className="border border-white/10 bg-[#0c2229] p-5 sm:p-9"
@@ -103,24 +79,8 @@ export function CalendarCard({
           </label>
         ))}
       </fieldset>
-      <button
-        type="button"
-        onClick={download}
-        disabled={!valid || !chosen.length}
-        className="mt-6 border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10 disabled:opacity-40"
-      >
-        Download Calendar File (.ics)
-      </button>
-      {!chosen.length && <p className="mt-3 text-sm">Select at least one event to export.</p>}
-      {downloadError && (
-        <p role="alert" className="mt-3 text-red-300">
-          {downloadError}
-        </p>
-      )}
       <p className="mt-4 text-sm text-[#9baca7]">
-        Calendar files carry stable identities saved in this browser. Imported copies are managed by
-        your calendar app; Sixth cannot safely update or remove an unverified import. Use the
-        connected Google integration below for managed updates and removal.
+        Use the connected Google integration below for managed calendar updates and removal.
       </p>
       <GoogleCalendarSection
         valid={valid}
