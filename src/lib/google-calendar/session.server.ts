@@ -103,12 +103,12 @@ export function sessionId(request: NextRequest): string | null {
   return raw && /^[A-Za-z0-9_-]{43}$/.test(raw) ? raw : null;
 }
 
-export async function readSession(request: NextRequest): Promise<GoogleSession> {
+export async function readSession(request: NextRequest, userId?: string): Promise<GoogleSession> {
   const raw = sessionId(request);
   if (!request.cookies.get(SESSION_COOKIE)?.value)
     throw new GoogleCalendarError("UNAUTHENTICATED", 401);
   if (!raw) throw new GoogleCalendarError("SESSION_EXPIRED", 401);
-  return readStoredSession(() => findSession(sessionHash(raw)));
+  return readStoredSession(() => findSession(sessionHash(raw), userId));
 }
 
 async function readStoredSession(

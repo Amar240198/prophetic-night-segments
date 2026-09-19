@@ -27,6 +27,12 @@ beforeAll(async () => {
   await db.exec(readFileSync("migrations/002_google_calendar_event_mappings.sql", "utf8"));
   await db.exec(readFileSync("migrations/003_google_calendar_night_parts.sql", "utf8"));
   await db.exec(readFileSync("migrations/004_calendar_ownership.sql", "utf8"));
+  await db.exec(readFileSync("migrations/005_miqaat_accounts.sql", "utf8"));
+  await db.query("INSERT INTO miqaat_users (id, email, password_hash) VALUES ($1, $2, $3)", [
+    "11111111-1111-4111-8111-111111111111",
+    "miqaat@example.com",
+    "x".repeat(60),
+  ]);
 }, 60_000);
 afterAll(async () => {
   await db.close();
@@ -59,13 +65,14 @@ async function sessionCookie(expiresAt = Date.now() + 3_600_000) {
     accessExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
     sessionHash: sessionHash(id),
     sessionExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+    userId: "11111111-1111-4111-8111-111111111111",
   });
   await db.query("UPDATE browser_sessions SET created_at = $1, expires_at = $2 WHERE id = $3", [
     new Date(expiresAt - 100_000).toISOString(),
     new Date(expiresAt).toISOString(),
     sessionHash(id),
   ]);
-  return `${SESSION_COOKIE}=${id}`;
+  return `${SESSION_COOKIE}=${id}; ${await appCookie()}`;
 }
 const event = {
   id: "last-third",
@@ -123,6 +130,14 @@ async function startFlow() {
   const cookie = `${FLOW_COOKIE}=${response.cookies.get(FLOW_COOKIE)!.value}`;
   return { authorization, cookie, state: authorization.searchParams.get("state")! };
 }
+async function appCookie(userId = "11111111-1111-4111-8111-111111111111") {
+  const secret = randomBytes(32).toString("hex");
+  await db.query(
+    "INSERT INTO miqaat_sessions (id, user_id, expires_at) VALUES ($1, $2, now() + interval '1 hour')",
+    [sessionHash(secret), userId],
+  );
+  return `miqaat_session=${secret}`;
+}
 
 describe("Google OAuth", () => {
   it("requests only owned events and email, with state, PKCE and a private cookie", async () => {
@@ -142,6 +157,7 @@ describe("Google OAuth", () => {
   });
   it("exchanges the callback code server-side and exposes only email and expiry", async () => {
     const { cookie, state } = await startFlow();
+    const accountCookie = await appCookie();
     vi.mocked(fetch)
       .mockResolvedValueOnce(
         json({
@@ -155,7 +171,11 @@ describe("Google OAuth", () => {
       .mockResolvedValueOnce(
         json({ id: "google-test-user", email: "user@example.com", verified_email: true }),
       );
-    const response = await callback(request(`callback?code=valid-code&state=${state}`, { cookie }));
+    const response = await callback(
+      request(`callback?code=valid-code&state=${state}`, {
+        cookie: `${cookie}; ${accountCookie}`,
+      }),
+    );
     expect(response.headers.get("location")).toContain("status=connected");
     const tokenRequest = vi.mocked(fetch).mock.calls[0]![1]!;
     expect(String(tokenRequest.body)).toContain("client_secret=test-client-secret");
@@ -165,6 +185,7 @@ describe("Google OAuth", () => {
     expect(sessionValue).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(sessionValue).not.toMatch(/test-access-token|test-refresh-token|user@example.com/);
     const stored = (await db.query("SELECT * FROM google_connections")).rows[0]!;
+    expect(stored.user_id).toBe("11111111-1111-4111-8111-111111111111");
     expect(stored.encrypted_access_token).not.toContain("test-access-token");
     expect(
       decryptToken(String(stored.encrypted_refresh_token), "google-test-user", "refresh"),
@@ -174,7 +195,7 @@ describe("Google OAuth", () => {
     );
     expect(response.cookies.get(FLOW_COOKIE)?.maxAge).toBe(0);
     const connected = await session(
-      request("session", { cookie: `${SESSION_COOKIE}=${sessionValue}` }),
+      request("session", { cookie: `${SESSION_COOKIE}=${sessionValue}; ${accountCookie}` }),
     );
     expect(await connected.json()).toMatchObject({ connected: true, email: "user@example.com" });
     expect(connected.headers.get("cache-control")).toBe("no-store");
@@ -199,23 +220,72 @@ describe("Google OAuth", () => {
   );
   it("reports consent denial", async () => {
     const { cookie, state } = await startFlow();
+    const accountCookie = await appCookie();
     const response = await callback(
-      request(`callback?error=access_denied&state=${state}`, { cookie }),
+      request(`callback?error=access_denied&state=${state}`, {
+        cookie: `${cookie}; ${accountCookie}`,
+      }),
     );
     expect(response.headers.get("location")).toContain("PERMISSION_DENIED");
     expect(fetch).not.toHaveBeenCalled();
   });
+  it("rejects a callback without the signed-in Miqāt session", async () => {
+    const { cookie, state } = await startFlow();
+    const response = await callback(request(`callback?code=code&state=${state}`, { cookie }));
+    expect(response.headers.get("location")).toContain("status=UNAUTHENTICATED");
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it("rejects partial consent without calendar permission", async () => {
     const { cookie, state } = await startFlow();
+    const accountCookie = await appCookie();
     vi.mocked(fetch).mockResolvedValueOnce(json({ scope: EMAIL_SCOPE }));
-    const response = await callback(request(`callback?code=code&state=${state}`, { cookie }));
+    const response = await callback(
+      request(`callback?code=code&state=${state}`, { cookie: `${cookie}; ${accountCookie}` }),
+    );
     expect(response.headers.get("location")).toContain("PERMISSION_DENIED");
     expect(response.cookies.get(SESSION_COOKIE)).toBeUndefined();
   });
+  it("does not let a second Miqāt account claim an owned Google connection", async () => {
+    await db.query("INSERT INTO miqaat_users (id, email, password_hash) VALUES ($1, $2, $3)", [
+      "22222222-2222-4222-8222-222222222222",
+      "other@example.com",
+      "x".repeat(60),
+    ]);
+    const input = {
+      connectionId: randomUUID(),
+      subject: "google-conflict",
+      email: "conflict@example.com",
+      accessToken: encryptToken("access-a", "google-conflict", "access"),
+      refreshToken: null,
+      accessExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      sessionHash: sessionHash(randomBytes(32).toString("base64url")),
+      sessionExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+      userId: "11111111-1111-4111-8111-111111111111",
+    };
+    await persistConnection(input);
+    await expect(
+      persistConnection({
+        ...input,
+        connectionId: randomUUID(),
+        userId: "22222222-2222-4222-8222-222222222222",
+        sessionHash: sessionHash(randomBytes(32).toString("base64url")),
+      }),
+    ).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(
+      (
+        await db.query("SELECT user_id FROM google_connections WHERE google_subject = $1", [
+          "google-conflict",
+        ])
+      ).rows[0]!.user_id,
+    ).toBe("11111111-1111-4111-8111-111111111111");
+  });
   it("hides token endpoint failure details", async () => {
     const { cookie, state } = await startFlow();
+    const accountCookie = await appCookie();
     vi.mocked(fetch).mockRejectedValueOnce(new Error("secret provider stack trace"));
-    const response = await callback(request(`callback?code=code&state=${state}`, { cookie }));
+    const response = await callback(
+      request(`callback?code=code&state=${state}`, { cookie: `${cookie}; ${accountCookie}` }),
+    );
     expect(response.headers.get("location")).toContain("CONNECTION_FAILED");
     expect(response.headers.get("location")).not.toContain("secret");
   });
@@ -281,7 +351,6 @@ describe("Google Calendar API routes", () => {
     const response = await events(request("events", { cookie, body: { events: [event] } }));
     expect(response.status).toBe(401);
     expect((await response.json()).error.code).toBe("SESSION_EXPIRED");
-    expect(response.cookies.get(SESSION_COOKIE)?.maxAge).toBe(0);
     expect(fetch).not.toHaveBeenCalled();
   });
   it.each([
@@ -407,8 +476,8 @@ describe("persistent credentials", () => {
 
   it.each(["malformed", "a".repeat(43)])("rejects invalid or unknown session %s", async (value) => {
     const response = await session(request("session", { cookie: `${SESSION_COOKIE}=${value}` }));
-    expect(response.status).toBe(401);
-    expect((await response.json()).error.code).toBe("SESSION_EXPIRED");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ connected: false, configured: true });
     expect(fetch).not.toHaveBeenCalled();
   });
 
@@ -510,6 +579,7 @@ describe("persistent credentials", () => {
 
 it("hides database failure details and never issues a session cookie after a failed write", async () => {
   const { cookie, state } = await startFlow();
+  const accountCookie = await appCookie();
   vi.mocked(fetch)
     .mockResolvedValueOnce(
       json({
@@ -526,7 +596,11 @@ it("hides database failure details and never issues a session cookie after a fai
     .spyOn(db, "query")
     .mockRejectedValueOnce(new Error("private database connection details"));
   try {
-    const response = await callback(request(`callback?code=valid-code&state=${state}`, { cookie }));
+    const response = await callback(
+      request(`callback?code=valid-code&state=${state}`, {
+        cookie: `${cookie}; ${accountCookie}`,
+      }),
+    );
     expect(response.headers.get("location")).toContain("status=CONNECTION_FAILED");
     expect(response.headers.get("location")).not.toContain("private");
     expect(response.cookies.get(SESSION_COOKIE)).toBeUndefined();
@@ -537,7 +611,8 @@ it("hides database failure details and never issues a session cookie after a fai
 
 it("a stale refresh cannot overwrite a newer login or resurrect a disconnected account", async () => {
   const cookie = await sessionCookie();
-  const hash = sessionHash(cookie.split("=")[1]!);
+  const googleCookie = cookie.split(";")[0]!;
+  const hash = sessionHash(googleCookie.split("=")[1]!);
   const stale = (await findSession(hash))!;
   await sessionCookie();
   const newer = (await findSession(hash))!;

@@ -7,11 +7,14 @@ import {
   readSession,
 } from "@/lib/google-calendar/session.server";
 import { readSyncPreference, readSyncSelection } from "@/lib/google-calendar/sync-database.server";
+import { readAppUserFromRequest } from "@/lib/auth/session.server";
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
     googleConfig();
-    const session = await readSession(request);
+    const appUser = await readAppUserFromRequest(request);
+    if (!appUser) return privateResponse({ connected: false, configured: true });
+    const session = await readSession(request, appUser.id);
     return privateResponse({
       connected: true,
       configured: true,

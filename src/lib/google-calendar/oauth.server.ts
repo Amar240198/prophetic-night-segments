@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { GoogleCalendarError } from "./errors";
 import { persistConnection } from "./database.server";
 import { encryptToken } from "./tokens.server";
+import { readAppUserFromRequest } from "@/lib/auth/session.server";
 import {
   SESSION_MAX_AGE,
   sessionHash,
@@ -74,6 +75,8 @@ export async function finishOAuth(request: NextRequest) {
     ) {
       throw new GoogleCalendarError("CONNECTION_FAILED");
     }
+    const appUser = await readAppUserFromRequest(request);
+    if (!appUser) throw new GoogleCalendarError("UNAUTHENTICATED", 401);
     if (request.nextUrl.searchParams.get("error") === "access_denied")
       throw new GoogleCalendarError("PERMISSION_DENIED");
     const code = request.nextUrl.searchParams.get("code");
@@ -139,6 +142,7 @@ export async function finishOAuth(request: NextRequest) {
       accessExpiresAt: new Date(Date.now() + seconds * 1000).toISOString(),
       sessionHash: sessionHash(opaqueId),
       sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString(),
+      userId: appUser.id,
     });
     response = completionRedirect(request, "connected");
     setPrivateCookie(response, SESSION_COOKIE, opaqueId, SESSION_MAX_AGE);

@@ -12,6 +12,12 @@ export interface AppUser {
   email: string;
   plan: "FREE" | "PRO" | "BUSINESS" | "ENTERPRISE";
 }
+async function readUserBySecret(secret: string | undefined): Promise<AppUser | null> {
+  if (!secret) return null;
+  const rows =
+    await database()`SELECT u.id, u.email, COALESCE(e.plan, 'FREE') AS plan FROM miqaat_sessions s JOIN miqaat_users u ON u.id = s.user_id LEFT JOIN miqaat_entitlements e ON e.user_id = u.id WHERE s.id = ${hash(secret)} AND s.expires_at > now()`;
+  return (rows[0] as AppUser | undefined) ?? null;
+}
 export async function createUser(email: string, passwordHash: string): Promise<AppUser> {
   const rows =
     await database()`WITH created AS (INSERT INTO miqaat_users (email, password_hash) VALUES (${email}, ${passwordHash}) RETURNING id, email), entitlement AS (INSERT INTO miqaat_entitlements (user_id) SELECT id FROM created), preferences AS (INSERT INTO miqaat_preferences (user_id) SELECT id FROM created) SELECT id, email FROM created`;
@@ -36,11 +42,10 @@ export async function startSession(userId: string) {
   });
 }
 export async function readAppUser(): Promise<AppUser | null> {
-  const secret = (await cookies()).get(COOKIE)?.value;
-  if (!secret) return null;
-  const rows =
-    await database()`SELECT u.id, u.email, COALESCE(e.plan, 'FREE') AS plan FROM miqaat_sessions s JOIN miqaat_users u ON u.id = s.user_id LEFT JOIN miqaat_entitlements e ON e.user_id = u.id WHERE s.id = ${hash(secret)} AND s.expires_at > now()`;
-  return (rows[0] as AppUser | undefined) ?? null;
+  return readUserBySecret((await cookies()).get(COOKIE)?.value);
+}
+export async function readAppUserFromRequest(request: NextRequest): Promise<AppUser | null> {
+  return readUserBySecret(request.cookies.get(COOKIE)?.value);
 }
 export async function endSession() {
   const secret = (await cookies()).get(COOKIE)?.value;

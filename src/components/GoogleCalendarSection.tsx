@@ -189,7 +189,9 @@ export function GoogleCalendarSection({
             return;
           }
           setError(
-            "Google sign-in closed, but a connection could not be confirmed. Please reconnect and approve Calendar access.",
+            (current) =>
+              current ||
+              "Google sign-in closed, but a connection could not be confirmed. Please reconnect and approve Calendar access.",
           );
         }
       });

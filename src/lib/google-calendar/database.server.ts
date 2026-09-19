@@ -26,9 +26,34 @@ export async function persistConnection(input: {
   accessExpiresAt: string;
   sessionHash: string;
   sessionExpiresAt: string;
+  userId?: string;
 }) {
-  // A single statement atomically upserts the account and creates its session.
-  await database()`
+  // Keep the legacy unbound path for pre-account integrations and tests. New
+  // OAuth connections are claimed atomically for the authenticated Miqāt user.
+  const rows = input.userId
+    ? await database()`
+    WITH connection AS (
+      INSERT INTO google_connections
+        (id, user_id, google_subject, google_account_email, encrypted_access_token,
+         encrypted_refresh_token, access_token_expires_at)
+      VALUES (${input.connectionId}, ${input.userId}, ${input.subject}, ${input.email}, ${input.accessToken},
+              ${input.refreshToken}, ${input.accessExpiresAt})
+      ON CONFLICT (provider, google_subject) DO UPDATE SET
+        google_account_email = EXCLUDED.google_account_email,
+        encrypted_access_token = EXCLUDED.encrypted_access_token,
+        encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, google_connections.encrypted_refresh_token),
+        access_token_expires_at = EXCLUDED.access_token_expires_at,
+        disconnected_at = NULL,
+        user_id = COALESCE(google_connections.user_id, EXCLUDED.user_id),
+        updated_at = now()
+      WHERE google_connections.user_id IS NULL OR google_connections.user_id = EXCLUDED.user_id
+      RETURNING id
+    )
+    INSERT INTO browser_sessions (id, google_connection_id, expires_at)
+    SELECT ${input.sessionHash}, id, ${input.sessionExpiresAt}::timestamptz FROM connection
+    RETURNING google_connection_id
+  `
+    : await database()`
     WITH connection AS (
       INSERT INTO google_connections
         (id, google_subject, google_account_email, encrypted_access_token,
@@ -47,15 +72,17 @@ export async function persistConnection(input: {
     INSERT INTO browser_sessions (id, google_connection_id, expires_at)
     SELECT ${input.sessionHash}, id, ${input.sessionExpiresAt}::timestamptz FROM connection
   `;
+  if (input.userId && rows.length !== 1) throw new GoogleCalendarError("FORBIDDEN", 403);
 }
 
-export async function findSession(hash: string): Promise<StoredSession | null> {
+export async function findSession(hash: string, userId?: string): Promise<StoredSession | null> {
   const rows = await database()`
     SELECT c.id AS connection_id, c.google_subject, c.google_account_email,
       c.encrypted_access_token, c.encrypted_refresh_token, c.access_token_expires_at,
       s.expires_at AS session_expires_at
     FROM browser_sessions s JOIN google_connections c ON c.id = s.google_connection_id
     WHERE s.id = ${hash} AND c.provider = 'google' AND c.disconnected_at IS NULL
+      AND (${userId ?? null}::uuid IS NULL OR c.user_id = ${userId ?? null})
       AND c.encrypted_access_token IS NOT NULL
   `;
   return (rows[0] as StoredSession | undefined) ?? null;
