@@ -1491,10 +1491,6 @@ export function PrayerWorkspace({
                   prayerSource={providerInfo?.source ?? "Supplied prayer times"}
                   firstAdhanMinutes={firstAdhanMinutes}
                   wakeBufferMinutes={firstAdhanMinutes ?? wakeBufferMinutes}
-                  onWakeBufferChange={(minutes) => {
-                    setWakeBufferMinutes(minutes);
-                    setFirstAdhanMinutes(null);
-                  }}
                 />
               </div>
             </>
