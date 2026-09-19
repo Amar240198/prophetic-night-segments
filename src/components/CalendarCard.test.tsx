@@ -26,35 +26,26 @@ const result = calculateNightSegments({
   timeZone: "UTC",
 });
 
-it("updates buffers, validates custom input and disables empty exports", () => {
+it("uses the selected night-map buffer and disables empty exports", () => {
   render(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
   expect(screen.getByLabelText(/Qiyam \/ Tahajjud — Wake Up/)).toBeChecked();
   expect(screen.getByText(/01:45:00/)).toBeInTheDocument();
-  fireEvent.change(screen.getByLabelText("Wake-up buffer"), { target: { value: "custom" } });
-  const input = screen.getByLabelText("Custom wake-up buffer (minutes)");
-  fireEvent.change(input, { target: { value: "-1" } });
-  expect(screen.getByRole("alert")).toHaveTextContent("whole number");
-  expect(screen.getByRole("button", { name: /Download Calendar/ })).toBeDisabled();
-  fireEvent.change(input, { target: { value: "30" } });
-  expect(screen.getByText(/01:30:00/)).toBeInTheDocument();
+  expect(screen.queryByLabelText("Wake-up buffer")).not.toBeInTheDocument();
   for (const checkbox of screen.getAllByRole("checkbox"))
     if ((checkbox as HTMLInputElement).checked) fireEvent.click(checkbox);
   expect(screen.getByRole("button", { name: /Download Calendar/ })).toBeDisabled();
 });
 
-it("reports a selected buffer to the shared night schedule", () => {
-  const onWakeBufferChange = vi.fn();
+it("uses the selected night-map buffer for generated events", () => {
   render(
     <CalendarCard
       result={result}
       dawudSelected={false}
       prayerSource="Manual"
-      wakeBufferMinutes={15}
-      onWakeBufferChange={onWakeBufferChange}
+      wakeBufferMinutes={30}
     />,
   );
-  fireEvent.change(screen.getByLabelText("Wake-up buffer"), { target: { value: "30" } });
-  expect(onWakeBufferChange).toHaveBeenCalledWith(30);
+  expect(screen.getByText(/01:30:00/)).toBeInTheDocument();
 });
 
 it("downloads only selected events and updates the Dawud window", async () => {
