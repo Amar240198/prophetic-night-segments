@@ -34,7 +34,7 @@ export interface CalendarEvent {
   /** Night events use the immutable Maghrib-associated date. Daily prayers use their civil date. */
   serviceDate?: string;
   /** Explicit identity scope keeps daily prayer dates separate from night service dates. */
-  identityScope?: "night" | "daily-prayer";
+  identityScope?: "night" | "daily-prayer" | "routine";
   /** Export identity, assigned once by the persistent export registry. */
   appEventId?: string;
   title: string;

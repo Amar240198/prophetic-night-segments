@@ -1,8 +1,24 @@
 export type RoutineType =
   "quran" | "dhikr" | "qiyam" | "tahajjud" | "suhoor" | "sleep-preparation" | "custom";
+export const ROUTINE_ANCHORS = [
+  "fajr",
+  "sunrise",
+  "dhuhr",
+  "asr",
+  "maghrib",
+  "isha",
+  "last-third",
+  "night_midpoint",
+  "last_third_start",
+  "final_sixth_start",
+  "bedtime",
+  "wake_time",
+  "jumuah",
+] as const;
+export type RoutineAnchor = (typeof ROUTINE_ANCHORS)[number];
 export type TimingRule =
   | { kind: "fixed"; time: string }
-  | { kind: "relative"; anchor: "fajr" | "maghrib" | "isha" | "last-third"; offsetMinutes: number };
+  | { kind: "relative"; anchor: RoutineAnchor; offsetMinutes: number };
 export interface Routine {
   id: string;
   name: string;
@@ -18,7 +34,14 @@ export function validateRoutine(
   input: Partial<Routine>,
 ): Omit<Routine, "id" | "createdAt" | "updatedAt"> {
   if (
-    !input.name?.trim() ||
+    typeof input.name !== "string" ||
+    !input.name.trim() ||
+    input.name.trim().length > 120 ||
+    !["quran", "dhikr", "qiyam", "tahajjud", "suhoor", "sleep-preparation", "custom"].includes(
+      String(input.type),
+    ) ||
+    (input.enabled !== undefined && typeof input.enabled !== "boolean") ||
+    (input.recurrence !== undefined && !["daily", "weekdays"].includes(input.recurrence)) ||
     !input.type ||
     !input.timing ||
     input.durationMinutes === undefined ||
@@ -27,11 +50,13 @@ export function validateRoutine(
     input.durationMinutes > 1440
   )
     throw new Error("INVALID_ROUTINE");
-  if (input.timing.kind === "fixed" && !/^\d{2}:\d{2}$/.test(input.timing.time))
+  if (!["fixed", "relative"].includes(input.timing.kind)) throw new Error("INVALID_ROUTINE");
+  if (input.timing.kind === "fixed" && !/^([01]\d|2[0-3]):[0-5]\d$/.test(input.timing.time))
     throw new Error("INVALID_ROUTINE");
   if (
     input.timing.kind === "relative" &&
-    (!Number.isInteger(input.timing.offsetMinutes) ||
+    (!ROUTINE_ANCHORS.includes(input.timing.anchor) ||
+      !Number.isInteger(input.timing.offsetMinutes) ||
       input.timing.offsetMinutes < -1440 ||
       input.timing.offsetMinutes > 1440)
   )

@@ -3,6 +3,7 @@ import Link from "next/link";
 import { useCalendarSyncStatus } from "./calendarStatus";
 import { useEffect, useState } from "react";
 import { Temporal } from "@js-temporal/polyfill";
+import { buildRoutineCalendarEvent } from "@/lib/routines/occurrences";
 import { buildDailyPrayerEvents } from "@/lib/calendar/buildCalendarEvents";
 import { fastingDates } from "@/lib/fasting/schedule";
 import { useDeviceRoutines } from "./useDeviceRoutines";
@@ -42,7 +43,7 @@ export function CalendarSummary() {
 export function TodayPage() {
   const { schedule, result, timeZone } = useWorkspace();
   const [now, setNow] = useState<number | null>(null);
-  const { routines } = useDeviceRoutines();
+  const { routines, error: routineError } = useDeviceRoutines();
   useEffect(() => {
     const tick = () => setNow(Date.now());
     tick();
@@ -54,6 +55,30 @@ export function TodayPage() {
     : null;
   const dateString = date?.toString();
   const events = schedule && schedule.date === dateString ? buildDailyPrayerEvents(schedule) : [];
+  const routineIssues: string[] = [];
+  const routineEvents =
+    dateString && events.length
+      ? routines.flatMap((routine) => {
+          try {
+            const event = buildRoutineCalendarEvent({
+              routine,
+              localDate: dateString,
+              timezone: timeZone,
+              prayerSchedule: Object.fromEntries(
+                events.map((event) => [event.id.replace("prayer-", ""), event.start]),
+              ),
+              nightSchedule: result ?? undefined,
+            });
+            return event ? [event] : [];
+          } catch {
+            if (routine.enabled) routineIssues.push(routine.name);
+            return [];
+          }
+        })
+      : [];
+  const timeline = [...events, ...routineEvents].sort(
+    (a, b) => Date.parse(a.start) - Date.parse(b.start),
+  );
   const next = now
     ? (events.find((e) => Date.parse(e.start) > now) ??
       (events.length && result && Date.parse(result.night.end) > now
@@ -104,10 +129,10 @@ export function TodayPage() {
             All Prayers →
           </Link>
         </Card>
-        <Card title="Prayers today">
+        <Card title="Today’s schedule">
           {events.length ? (
             <dl className="summary-list">
-              {events.map((e) => (
+              {timeline.map((e) => (
                 <div key={e.id}>
                   <dt>{e.title}</dt>
                   <dd>{display(e.start)}</dd>
@@ -119,6 +144,12 @@ export function TodayPage() {
               Fajr · Dhuhr · Asr · Maghrib · Isha
               <br />
               Timetable not yet loaded for today.
+            </p>
+          )}
+          {routineIssues.length > 0 && (
+            <p role="status">
+              Timing unavailable for: {routineIssues.join(", ")}. Configure the required anchors in
+              your routine settings.
             </p>
           )}
           <Link className="module-link" href="/app/prayers">
@@ -175,6 +206,7 @@ export function TodayPage() {
           </Link>
         </Card>
         <Card title="Routines">
+          {routineError && <p role="alert">{routineError}</p>}
           {due.length ? (
             <ul>
               {due.map((r) => (
@@ -184,7 +216,7 @@ export function TodayPage() {
               ))}
             </ul>
           ) : (
-            <p>No enabled routines due today on this device.</p>
+            <p>No enabled account routines due today.</p>
           )}
           <Link className="module-link" href="/app/routines">
             Manage routines →

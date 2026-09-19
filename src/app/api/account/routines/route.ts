@@ -39,10 +39,10 @@ export async function POST(request: NextRequest) {
     });
     const count =
       await database()`SELECT count(*)::int AS count FROM miqaat_routines WHERE user_id = ${user.id}`;
-    if (Number(count[0]!.count) >= 5)
+    if (Number(count[0]!.count) >= 100)
       return NextResponse.json(
         {
-          error: { code: "ROUTINE_LIMIT", message: "The Free plan supports up to five routines." },
+          error: { code: "ROUTINE_LIMIT", message: "You can save up to 100 routines." },
         },
         { status: 403 },
       );

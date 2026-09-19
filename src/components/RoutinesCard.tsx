@@ -1,9 +1,16 @@
 "use client";
 import { useState } from "react";
-import { validateRoutine, type RoutineType } from "@/lib/routines/model";
+import { ROUTINE_TEMPLATES } from "@/lib/routines/templates";
+import { humanReadableRule } from "@/lib/routines/resolve";
+import {
+  validateRoutine,
+  ROUTINE_ANCHORS,
+  type RoutineAnchor,
+  type RoutineType,
+} from "@/lib/routines/model";
 import { useDeviceRoutines } from "./app/useDeviceRoutines";
 export function RoutinesCard() {
-  const { routines, save } = useDeviceRoutines();
+  const { routines, save, loading, error: accountError } = useDeviceRoutines();
   const [name, setName] = useState("");
   const [type, setType] = useState<RoutineType>("quran");
   const [error, setError] = useState("");
@@ -12,12 +19,12 @@ export function RoutinesCard() {
   const [duration, setDuration] = useState(20);
   const [time, setTime] = useState("06:00");
   const [timingKind, setTimingKind] = useState<"fixed" | "relative">("relative");
-  const [anchor, setAnchor] = useState<"fajr" | "maghrib" | "isha" | "last-third">("fajr");
+  const [anchor, setAnchor] = useState<RoutineAnchor>("fajr");
   const [offset, setOffset] = useState(0);
   const [recurrence, setRecurrence] = useState<"daily" | "weekdays">("daily");
-  function add() {
-    if (!editing && routines.length >= 5) {
-      setError("The Free plan supports up to five saved routines.");
+  async function add() {
+    if (!editing && routines.length >= 100) {
+      setError("You can save up to 100 routines.");
       return;
     }
     try {
@@ -33,11 +40,12 @@ export function RoutinesCard() {
             ? { kind: "fixed", time }
             : { kind: "relative", anchor, offsetMinutes: offset },
       });
-      save(
+      const saved = await save(
         editing
           ? routines.map((r) => (r.id === editing ? { ...r, ...routine, updatedAt: now } : r))
           : [...routines, { ...routine, id: crypto.randomUUID(), createdAt: now, updatedAt: now }],
       );
+      if (!saved) return;
       setEditing(null);
       setFormOpen(false);
       setName("");
@@ -56,7 +64,37 @@ export function RoutinesCard() {
       <h2 id="routines-title" className="mt-3 font-serif text-3xl">
         Personal routines
       </h2>
-      <p className="mt-3 text-sm text-[#9baca7]">Routines are saved on this device.</p>
+      <p className="mt-3 text-sm text-[#9baca7]">Routines are saved to your account.</p>
+      <h3 className="mt-6 text-xl">Suggested</h3>
+      <p className="mt-2 text-sm text-[#9baca7]">
+        Optional timing suggestions. Customise and save to add a routine.
+      </p>
+      <ul className="mt-4 grid gap-3 sm:grid-cols-2">
+        {ROUTINE_TEMPLATES.map((template) => (
+          <li key={template.key} className="border border-white/10 p-4">
+            <h4>{template.title}</h4>
+            <p className="my-2 text-sm text-[#9baca7]">{template.description}</p>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={() => {
+                setEditing(null);
+                setName(template.title);
+                setType(template.type);
+                setDuration(template.durationMinutes);
+                setTimingKind("relative");
+                setAnchor(template.anchor);
+                setOffset(template.offsetMinutes);
+                setRecurrence(template.recurrence);
+                setFormOpen(true);
+              }}
+            >
+              Customise {template.title}
+            </button>
+          </li>
+        ))}
+      </ul>
+      <h3 className="mt-6 text-xl">My Routines</h3>
       <button
         className="primary-button mt-5"
         onClick={() => {
@@ -71,7 +109,7 @@ export function RoutinesCard() {
           setFormOpen(true);
         }}
       >
-        + Add routine
+        + Add Custom Routine
       </button>
       {formOpen && (
         <form
@@ -145,10 +183,11 @@ export function RoutinesCard() {
               <label>
                 Anchor
                 <select value={anchor} onChange={(e) => setAnchor(e.target.value as typeof anchor)}>
-                  <option value="fajr">Fajr</option>
-                  <option value="maghrib">Maghrib</option>
-                  <option value="isha">Isha</option>
-                  <option value="last-third">Last third</option>
+                  {ROUTINE_ANCHORS.map((value) => (
+                    <option key={value} value={value}>
+                      {value.replaceAll("_", " ")}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -174,6 +213,8 @@ export function RoutinesCard() {
           </div>
         </form>
       )}
+      {loading && <p role="status">Loading account routines…</p>}
+      {accountError && <p role="alert">{accountError}</p>}
       {error && (
         <p role="alert" className="mt-3 text-red-300">
           {error}
@@ -188,10 +229,8 @@ export function RoutinesCard() {
             <span>
               {routine.name} · {routine.type} · {routine.durationMinutes} minutes
               <span className="mt-2 block text-[#9baca7]">
-                {routine.timing.kind === "fixed"
-                  ? routine.timing.time
-                  : `${routine.timing.offsetMinutes} min from ${routine.timing.anchor}`}{" "}
-                · {routine.recurrence} · {routine.enabled ? "Enabled" : "Disabled"}
+                {humanReadableRule(routine)} · {routine.recurrence} ·{" "}
+                {routine.enabled ? "Enabled" : "Disabled"}
               </span>
             </span>
             <div className="form-actions">

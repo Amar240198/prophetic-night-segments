@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import React from "react";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
 import { AppShell } from "@/components/app/AppShell";
@@ -106,7 +106,14 @@ describe("Miqāt information architecture", () => {
   });
   it("shows summaries on Today without module configuration", async () => {
     workspace(<TodayPage />);
-    for (const name of ["Next prayer", "Prayers today", "Night", "Fasting", "Routines", "Calendar"])
+    for (const name of [
+      "Next prayer",
+      "Today’s schedule",
+      "Night",
+      "Fasting",
+      "Routines",
+      "Calendar",
+    ])
       expect(screen.getByRole("heading", { name })).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Prayer-time source")).not.toBeInTheDocument();
@@ -160,21 +167,42 @@ describe("Miqāt information architecture", () => {
     expect(screen.getByLabelText("Dāwūd starting date")).toHaveValue("2026-09-18");
     expect(screen.getByRole("button", { name: "Download schedule (.ics)" })).toBeInTheDocument();
   });
-  it("supports adding, editing, disabling and deleting a routine", () => {
+  it("supports adding, editing, disabling and deleting an account routine", async () => {
+    let rows: Record<string, unknown>[] = [];
+    vi.mocked(fetch).mockImplementation(async (_url, options) => {
+      if (options?.method === "DELETE") rows = [];
+      else if (options?.method === "POST" || options?.method === "PUT") {
+        const value = JSON.parse(String(options.body));
+        rows = [
+          {
+            ...value,
+            id: "11111111-1111-4111-8111-111111111111",
+            duration_minutes: value.durationMinutes,
+            timing_rule: value.timing,
+            created_at: "2026-09-19",
+            updated_at: "2026-09-19",
+          },
+        ];
+      }
+      return Response.json({ routines: rows, routine: rows[0] });
+    });
     render(<RoutinesCard />);
     expect(screen.queryByLabelText("Routine name")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "+ Add routine" }));
+    await waitFor(() =>
+      expect(screen.queryByText("Loading account routines…")).not.toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "+ Add Custom Routine" }));
     fireEvent.change(screen.getByLabelText("Routine name"), { target: { value: "Reading" } });
     fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
-    expect(screen.queryByRole("form")).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "Edit" }));
     fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "30" } });
     fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
-    expect(screen.getByText(/Reading · quran · 30 minutes/)).toBeInTheDocument();
+    expect(await screen.findByText(/Reading · quran · 30 minutes/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Disable" }));
-    expect(screen.getByRole("button", { name: "Enable" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Enable" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    expect(screen.queryByText(/Reading ·/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/Reading ·/)).not.toBeInTheDocument());
   });
   it("shows central calendar controls without unsupported sync toggles", async () => {
     workspace(<CalendarPage />);
