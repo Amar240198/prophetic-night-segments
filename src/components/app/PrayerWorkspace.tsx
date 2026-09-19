@@ -445,6 +445,7 @@ export function PrayerWorkspace({
   const [providerInfo, setProviderInfo] = useState<LivePrayerTimes | null>(null);
   const [submitted, setSubmitted] = useState<NightCalculationInput | null>(null);
   const [firstAdhanMinutes, setFirstAdhanMinutes] = useState<number | null>(null);
+  const [wakeBufferMinutes, setWakeBufferMinutes] = useState(15);
   const [timelineView, setTimelineView] = useState<"general" | "dawud" | "prophetic">("general");
 
   const calculation = useMemo(() => {
@@ -452,7 +453,10 @@ export function PrayerWorkspace({
     try {
       // Validate the display timezone independently from interval arithmetic.
       new Intl.DateTimeFormat("en", { timeZone: submitted.timeZone }).format(0);
-      const engineResult = calculateSharedNightSegments(submitted);
+      const engineResult = calculateSharedNightSegments({
+        ...submitted,
+        fajrWakeBufferMinutes: firstAdhanMinutes ?? wakeBufferMinutes,
+      });
       return { result: mapNightSegments(engineResult), engineResult, error: "" };
     } catch (error) {
       return {
@@ -461,7 +465,7 @@ export function PrayerWorkspace({
         error: error instanceof Error ? error.message : "Calculation failed.",
       };
     }
-  }, [submitted]);
+  }, [submitted, firstAdhanMinutes, wakeBufferMinutes]);
 
   async function loadLivePrayerTimes(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -1183,6 +1187,7 @@ export function PrayerWorkspace({
                 result={engineResult}
                 timeZone={submitted.timeZone}
                 firstAdhanMinutes={firstAdhanMinutes}
+                bufferBeforeFajrMinutes={wakeBufferMinutes}
               />
             )}
             <div
@@ -1480,11 +1485,17 @@ export function PrayerWorkspace({
             <>
               <div id="sixth-of-the-night">
                 <CalendarCard
+                  key={`calendar-${firstAdhanMinutes ?? wakeBufferMinutes}`}
                   result={engineResult}
                   syncContext={syncContext}
                   dawudSelected={timelineView === "dawud"}
                   prayerSource={providerInfo?.source ?? "Supplied prayer times"}
                   firstAdhanMinutes={firstAdhanMinutes}
+                  wakeBufferMinutes={firstAdhanMinutes ?? wakeBufferMinutes}
+                  onWakeBufferChange={(minutes) => {
+                    setWakeBufferMinutes(minutes);
+                    setFirstAdhanMinutes(null);
+                  }}
                 />
               </div>
             </>

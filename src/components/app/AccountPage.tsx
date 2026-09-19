@@ -10,6 +10,8 @@ export function AccountPage({ user }: { user: AppUser | null }) {
   const params = useSearchParams();
   const { settings } = useWorkspace();
   const [signup, setSignup] = useState(false);
+  const [forgotPassword, setForgotPassword] = useState(false);
+  const [forgotSent, setForgotSent] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   async function authenticate(e: React.FormEvent<HTMLFormElement>) {
@@ -44,6 +46,25 @@ export function AccountPage({ user }: { user: AppUser | null }) {
       router.refresh();
     } catch {
       setError("Sign out failed. Please retry.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function requestPasswordReset(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    const data = new FormData(e.currentTarget);
+    try {
+      const response = await fetch("/api/auth/forgot-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: data.get("email") }),
+      });
+      if (!response.ok) throw new Error("Unable to request a password reset.");
+      setForgotSent(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Unable to request a password reset.");
     } finally {
       setBusy(false);
     }
@@ -110,36 +131,79 @@ export function AccountPage({ user }: { user: AppUser | null }) {
         </>
       ) : (
         <Card title={signup ? "Create your account" : "Sign in to Miqāt"}>
-          <form className="account-form" onSubmit={authenticate}>
-            <label>
-              Email
-              <input name="email" type="email" autoComplete="email" required />
-            </label>
-            <label>
-              Password
-              <input
-                name="password"
-                type="password"
-                minLength={12}
-                maxLength={200}
-                autoComplete={signup ? "new-password" : "current-password"}
-                required
-              />
-            </label>
-            <p>Use at least 12 characters.</p>
-            <button className="primary-button" disabled={busy}>
-              {busy ? "Please wait…" : signup ? "Create account" : "Sign in"}
+          {forgotPassword ? (
+            <>
+              <p>Enter your account email and we’ll send a secure password reset link.</p>
+              <form className="account-form" onSubmit={requestPasswordReset}>
+                <label>
+                  Email
+                  <input name="email" type="email" autoComplete="email" required />
+                </label>
+                <button className="primary-button" disabled={busy}>
+                  {busy ? "Please wait…" : "Send reset link"}
+                </button>
+              </form>
+              {forgotSent && (
+                <p role="status" className="mt-3">
+                  If an account exists for that email, reset instructions will be sent.
+                </p>
+              )}
+              <button
+                className="module-link"
+                onClick={() => {
+                  setForgotPassword(false);
+                  setForgotSent(false);
+                  setError("");
+                }}
+              >
+                Back to sign in
+              </button>
+            </>
+          ) : (
+            <form className="account-form" onSubmit={authenticate}>
+              <label>
+                Email
+                <input name="email" type="email" autoComplete="email" required />
+              </label>
+              <label>
+                Password
+                <input
+                  name="password"
+                  type="password"
+                  minLength={12}
+                  maxLength={200}
+                  autoComplete={signup ? "new-password" : "current-password"}
+                  required
+                />
+              </label>
+              <p>Use at least 12 characters.</p>
+              <button className="primary-button" disabled={busy}>
+                {busy ? "Please wait…" : signup ? "Create account" : "Sign in"}
+              </button>
+            </form>
+          )}
+          {!signup && !forgotPassword && (
+            <button
+              className="module-link"
+              onClick={() => {
+                setForgotPassword(true);
+                setError("");
+              }}
+            >
+              Forgot password?
             </button>
-          </form>
-          <button
-            className="module-link"
-            onClick={() => {
-              setSignup(!signup);
-              setError("");
-            }}
-          >
-            {signup ? "Already have an account? Sign in" : "Create a free account"}
-          </button>
+          )}
+          {!forgotPassword && (
+            <button
+              className="module-link"
+              onClick={() => {
+                setSignup(!signup);
+                setError("");
+              }}
+            >
+              {signup ? "Already have an account? Sign in" : "Create a free account"}
+            </button>
+          )}
           <p className="mt-4">
             The free Sixth calculator and basic prayer timetable remain available without an
             account.

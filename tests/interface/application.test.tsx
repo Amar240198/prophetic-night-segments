@@ -229,6 +229,18 @@ describe("Miqāt information architecture", () => {
       expect.objectContaining({ method: "POST" }),
     );
   });
+  it("offers an enumeration-resistant forgot-password request from sign in", async () => {
+    workspace(<AccountPage user={null} />);
+    fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
+    expect(screen.getByRole("button", { name: "Send reset link" })).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send reset link" }));
+    await screen.findByRole("status");
+    expect(fetch).toHaveBeenCalledWith(
+      "/api/auth/forgot-password",
+      expect.objectContaining({ method: "POST" }),
+    );
+  });
   it("shows the actual account plan and data export", async () => {
     workspace(<AccountPage user={{ id: "id", email: "user@example.com", plan: "FREE" }} />);
     expect(screen.getByText("user@example.com")).toBeInTheDocument();

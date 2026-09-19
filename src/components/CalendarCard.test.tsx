@@ -42,6 +42,21 @@ it("updates buffers, validates custom input and disables empty exports", () => {
   expect(screen.getByRole("button", { name: /Download Calendar/ })).toBeDisabled();
 });
 
+it("reports a selected buffer to the shared night schedule", () => {
+  const onWakeBufferChange = vi.fn();
+  render(
+    <CalendarCard
+      result={result}
+      dawudSelected={false}
+      prayerSource="Manual"
+      wakeBufferMinutes={15}
+      onWakeBufferChange={onWakeBufferChange}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Wake-up buffer"), { target: { value: "30" } });
+  expect(onWakeBufferChange).toHaveBeenCalledWith(30);
+});
+
 it("downloads only selected events and updates the Dawud window", async () => {
   const createObjectURL = vi.fn().mockReturnValue("blob:calendar");
   vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));

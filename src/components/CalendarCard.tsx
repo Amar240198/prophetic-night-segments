@@ -16,21 +16,34 @@ export function CalendarCard({
   dawudSelected,
   prayerSource,
   firstAdhanMinutes = null,
+  wakeBufferMinutes,
+  onWakeBufferChange,
   syncContext,
 }: {
   result: NightCalculationResult;
   dawudSelected: boolean;
   prayerSource: string;
   firstAdhanMinutes?: number | null;
+  wakeBufferMinutes?: number;
+  onWakeBufferChange?: (minutes: number) => void;
   syncContext?: SyncContext | null;
 }) {
-  const [buffer, setBuffer] = useState("15");
+  const [buffer, setBuffer] = useState(() =>
+    wakeBufferMinutes === undefined ? "15" : String(wakeBufferMinutes),
+  );
   const [custom, setCustom] = useState("15");
   const [selected, setSelected] = useState(["wake", "last-third", "fajr"]);
   const [downloadError, setDownloadError] = useState("");
   const value = buffer === "custom" ? custom : buffer;
   const minutes = value.trim() === "" ? NaN : Number(value);
   const valid = Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440;
+  function updateBuffer(next: string) {
+    setBuffer(next);
+    const nextMinutes = next === "custom" ? Number(custom) : Number(next);
+    if (Number.isInteger(nextMinutes) && nextMinutes >= 0 && nextMinutes <= 1440) {
+      onWakeBufferChange?.(nextMinutes);
+    }
+  }
   const events = buildCalendarEvents(result, {
     wakeBufferMinutes: valid ? minutes : 0,
     pattern: dawudSelected ? "dawud" : "last-third",
@@ -76,7 +89,7 @@ export function CalendarCard({
         Wake-up buffer
         <select
           value={buffer}
-          onChange={(event) => setBuffer(event.target.value)}
+          onChange={(event) => updateBuffer(event.target.value)}
           className="border border-white/20 bg-[#06151a] px-3 py-2"
         >
           {[0, 5, 10, 15, 20, 30].map((option) => (
@@ -96,7 +109,13 @@ export function CalendarCard({
             max="1440"
             step="1"
             value={custom}
-            onChange={(event) => setCustom(event.target.value)}
+            onChange={(event) => {
+              setCustom(event.target.value);
+              const nextMinutes = Number(event.target.value);
+              if (Number.isInteger(nextMinutes) && nextMinutes >= 0 && nextMinutes <= 1440) {
+                onWakeBufferChange?.(nextMinutes);
+              }
+            }}
             aria-invalid={!valid}
             aria-describedby={!valid ? "calendar-buffer-error" : undefined}
             className="border border-white/20 bg-[#06151a] px-3 py-2"
