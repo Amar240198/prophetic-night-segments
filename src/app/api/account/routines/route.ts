@@ -13,7 +13,7 @@ export async function GET() {
   const user = await readAppUser();
   if (!user) return unauthenticated();
   const rows =
-    await database()`SELECT id, name, routine_type AS type, enabled, duration_minutes, recurrence, weekdays, timing_rule, calendar_sync_enabled, notification_enabled, created_at, updated_at FROM miqaat_routines WHERE user_id = ${user.id} ORDER BY created_at`;
+    await database()`SELECT id, name, routine_type AS type, enabled, duration_minutes, recurrence, weekdays, timing_rule, calendar_sync_enabled, notification_enabled, notification_minutes, created_at, updated_at FROM miqaat_routines WHERE user_id = ${user.id} ORDER BY created_at`;
   return NextResponse.json({ routines: rows });
 }
 export async function POST(request: NextRequest) {
@@ -36,6 +36,9 @@ export async function POST(request: NextRequest) {
       durationMinutes: body.durationMinutes as number,
       recurrence: body.recurrence as never,
       timing: body.timing as never,
+      weekdays: body.weekdays as number[],
+      calendarSyncEnabled: body.calendarSyncEnabled as boolean,
+      notificationMinutes: body.notificationMinutes as number | null,
     });
     const count =
       await database()`SELECT count(*)::int AS count FROM miqaat_routines WHERE user_id = ${user.id}`;
@@ -47,7 +50,7 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     const rows =
-      await database()`INSERT INTO miqaat_routines (user_id, name, routine_type, enabled, duration_minutes, recurrence, timing_rule) VALUES (${user.id}, ${valid.name}, ${valid.type}, ${valid.enabled}, ${valid.durationMinutes}, ${valid.recurrence}, ${JSON.stringify(valid.timing)}::jsonb) RETURNING id, name, routine_type AS type, enabled, duration_minutes, recurrence, timing_rule, created_at, updated_at`;
+      await database()`INSERT INTO miqaat_routines (user_id, name, routine_type, enabled, duration_minutes, recurrence, timing_rule, weekdays, calendar_sync_enabled, notification_minutes) VALUES (${user.id}, ${valid.name}, ${valid.type}, ${valid.enabled}, ${valid.durationMinutes}, ${valid.recurrence}, ${JSON.stringify(valid.timing)}::jsonb, ${JSON.stringify(valid.weekdays)}::jsonb, ${valid.calendarSyncEnabled}, ${valid.notificationMinutes}) RETURNING id, name, routine_type AS type, enabled, duration_minutes, recurrence, timing_rule, created_at, updated_at`;
     return NextResponse.json({ routine: rows[0] }, { status: 201 });
   } catch {
     return NextResponse.json(
@@ -82,9 +85,12 @@ export async function PUT(request: NextRequest) {
       durationMinutes: body.durationMinutes as number,
       recurrence: body.recurrence as never,
       timing: body.timing as never,
+      weekdays: body.weekdays as number[],
+      calendarSyncEnabled: body.calendarSyncEnabled as boolean,
+      notificationMinutes: body.notificationMinutes as number | null,
     });
     const rows =
-      await database()`UPDATE miqaat_routines SET name = ${valid.name}, routine_type = ${valid.type}, enabled = ${valid.enabled}, duration_minutes = ${valid.durationMinutes}, recurrence = ${valid.recurrence}, timing_rule = ${JSON.stringify(valid.timing)}::jsonb, updated_at = now() WHERE id = ${id} AND user_id = ${user.id} RETURNING id, name, routine_type AS type, enabled, duration_minutes, recurrence, timing_rule, created_at, updated_at`;
+      await database()`UPDATE miqaat_routines SET name = ${valid.name}, routine_type = ${valid.type}, enabled = ${valid.enabled}, duration_minutes = ${valid.durationMinutes}, recurrence = ${valid.recurrence}, timing_rule = ${JSON.stringify(valid.timing)}::jsonb, weekdays = ${JSON.stringify(valid.weekdays)}::jsonb, calendar_sync_enabled = ${valid.calendarSyncEnabled}, notification_minutes = ${valid.notificationMinutes}, updated_at = now() WHERE id = ${id} AND user_id = ${user.id} RETURNING id, name, routine_type AS type, enabled, duration_minutes, recurrence, timing_rule, created_at, updated_at`;
     if (!rows.length)
       return NextResponse.json(
         { error: { code: "ROUTINE_NOT_FOUND", message: "Routine was not found." } },

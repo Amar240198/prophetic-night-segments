@@ -10,6 +10,9 @@ function decode(value: Record<string, unknown>): Routine {
     durationMinutes: value.duration_minutes as number,
     recurrence: value.recurrence as Routine["recurrence"],
     timing: value.timing_rule as Routine["timing"],
+    weekdays: value.weekdays as number[],
+    calendarSyncEnabled: value.calendar_sync_enabled as boolean,
+    notificationMinutes: value.notification_minutes as number | null,
   });
   return {
     ...valid,

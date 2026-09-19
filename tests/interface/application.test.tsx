@@ -106,6 +106,10 @@ describe("Miqāt information architecture", () => {
   });
   it("shows summaries on Today without module configuration", async () => {
     workspace(<TodayPage />);
+    expect(
+      screen.getByRole("heading", { name: "Your Islamic calendar today" }),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByText("Prayer, night and sync details"));
     for (const name of [
       "Next prayer",
       "Today’s schedule",

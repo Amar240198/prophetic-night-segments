@@ -17,7 +17,14 @@ export interface ReconciliationScope {
   allowRemoval: boolean;
 }
 const mutableContent = (event: CalendarEvent) =>
-  JSON.stringify([event.title, event.start, event.end, event.description, event.timeZone]);
+  JSON.stringify([
+    event.title,
+    event.start,
+    event.end,
+    event.description,
+    event.timeZone,
+    event.notificationMinutes,
+  ]);
 /** Pure planner. Executor must reverify ownership and use conditional provider writes. */
 export function planCalendarReconciliation(
   desired: readonly ReconciliationEntry[],

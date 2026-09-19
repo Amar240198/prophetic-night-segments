@@ -26,6 +26,8 @@ export interface RoutineResolutionInput {
   timezone: string;
   prayerSchedule?: Partial<Record<RoutineAnchor, string>>;
   nightSchedule?: NightCalculationResult;
+  hijriDay?: number;
+  fastingDay?: boolean;
   personalAnchors?: Partial<Record<"bedtime" | "wake_time" | "jumuah", string>>;
 }
 
@@ -55,6 +57,20 @@ export function resolveRoutineOccurrence(input: RoutineResolutionInput): Routine
     // Validate the timezone even when no occurrence is due.
     Temporal.Instant.fromEpochMilliseconds(0).toZonedDateTimeISO(timezone);
     if (!routine.enabled || (routine.recurrence === "weekdays" && date.dayOfWeek > 5)) return null;
+    if (routine.recurrence === "selected-weekdays" && !routine.weekdays?.includes(date.dayOfWeek))
+      return null;
+    const weekday = { friday: 5, monday: 1, thursday: 4 }[
+      routine.recurrence as "friday" | "monday" | "thursday"
+    ];
+    if (weekday && date.dayOfWeek !== weekday) return null;
+    if (routine.recurrence === "white-days") {
+      if (input.hijriDay === undefined) throw new RoutineResolutionError("MISSING_ANCHOR");
+      if (![13, 14, 15].includes(input.hijriDay)) return null;
+    }
+    if (routine.recurrence === "fasting-days") {
+      if (input.fastingDay === undefined) throw new RoutineResolutionError("MISSING_ANCHOR");
+      if (!input.fastingDay) return null;
+    }
     let anchor: Temporal.Instant;
     const timing = routine.timing;
     if (timing.kind === "fixed") anchor = localInstant(timing.time);

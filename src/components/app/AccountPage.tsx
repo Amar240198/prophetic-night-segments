@@ -54,15 +54,15 @@ export function AccountPage({ user }: { user: AppUser | null }) {
       const responses = await Promise.all([
         fetch("/api/account/preferences"),
         fetch("/api/account/routines"),
+        fetch("/api/account/automation"),
       ]);
       if (responses.some((r) => !r.ok)) throw new Error();
-      const [preferences, routines] = await Promise.all(responses.map((r) => r.json()));
+      const [preferences, routines, automation] = await Promise.all(responses.map((r) => r.json()));
       const data = {
         profile: user,
         preferences,
         routines,
-        devicePreferences: localStorage.getItem("miqat.preferences.v1"),
-        deviceRoutines: localStorage.getItem("miqat.routines.v1"),
+        automation,
       };
       const url = URL.createObjectURL(
         new Blob([JSON.stringify(data, null, 2)], { type: "application/json" }),

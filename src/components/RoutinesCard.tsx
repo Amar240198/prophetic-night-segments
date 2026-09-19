@@ -6,6 +6,7 @@ import {
   validateRoutine,
   ROUTINE_ANCHORS,
   type RoutineAnchor,
+  type RoutineRecurrence,
   type RoutineType,
 } from "@/lib/routines/model";
 import { useDeviceRoutines } from "./app/useDeviceRoutines";
@@ -21,7 +22,10 @@ export function RoutinesCard() {
   const [timingKind, setTimingKind] = useState<"fixed" | "relative">("relative");
   const [anchor, setAnchor] = useState<RoutineAnchor>("fajr");
   const [offset, setOffset] = useState(0);
-  const [recurrence, setRecurrence] = useState<"daily" | "weekdays">("daily");
+  const [recurrence, setRecurrence] = useState<RoutineRecurrence>("daily");
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [calendarSyncEnabled, setCalendarSyncEnabled] = useState(false);
+  const [notificationMinutes, setNotificationMinutes] = useState<number | null>(null);
   async function add() {
     if (!editing && routines.length >= 100) {
       setError("You can save up to 100 routines.");
@@ -34,6 +38,9 @@ export function RoutinesCard() {
         type,
         durationMinutes: duration,
         recurrence,
+        weekdays,
+        calendarSyncEnabled,
+        notificationMinutes,
         enabled: editing ? routines.find((r) => r.id === editing)?.enabled : true,
         timing:
           timingKind === "fixed"
@@ -99,6 +106,9 @@ export function RoutinesCard() {
         className="primary-button mt-5"
         onClick={() => {
           setEditing(null);
+          setWeekdays([]);
+          setCalendarSyncEnabled(false);
+          setNotificationMinutes(null);
           setName("");
           setDuration(20);
           setType("quran");
@@ -157,10 +167,69 @@ export function RoutinesCard() {
             Repeat
             <select
               value={recurrence}
-              onChange={(e) => setRecurrence(e.target.value as "daily" | "weekdays")}
+              onChange={(e) => setRecurrence(e.target.value as RoutineRecurrence)}
             >
               <option value="daily">Every day</option>
               <option value="weekdays">Weekdays</option>
+              <option value="friday">Friday</option>
+              <option value="monday">Monday</option>
+              <option value="thursday">Thursday</option>
+              <option value="selected-weekdays">Selected weekdays</option>
+              <option value="white-days">White Days (arithmetic calendar)</option>
+              <option value="fasting-days">Enabled fasting days</option>
+            </select>
+          </label>
+          {recurrence === "selected-weekdays" && (
+            <fieldset>
+              <legend>Weekdays</legend>
+              {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
+                (day, index) => (
+                  <label key={day}>
+                    <input
+                      type="checkbox"
+                      checked={weekdays.includes(index + 1)}
+                      onChange={(e) =>
+                        setWeekdays(
+                          e.target.checked
+                            ? [...weekdays, index + 1]
+                            : weekdays.filter((d) => d !== index + 1),
+                        )
+                      }
+                    />
+                    {day}
+                  </label>
+                ),
+              )}
+            </fieldset>
+          )}
+          <label>
+            Calendar
+            <select disabled>
+              <option>Google primary calendar</option>
+            </select>
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={calendarSyncEnabled}
+              onChange={(e) => setCalendarSyncEnabled(e.target.checked)}
+            />
+            Calendar sync
+          </label>
+          <label>
+            Notification
+            <select
+              value={notificationMinutes ?? "none"}
+              onChange={(e) =>
+                setNotificationMinutes(e.target.value === "none" ? null : Number(e.target.value))
+              }
+            >
+              <option value="none">None</option>
+              {[0, 5, 10, 15, 30].map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes === 0 ? "At event time" : `${minutes} minutes before`}
+                </option>
+              ))}
             </select>
           </label>
           <label>
@@ -188,6 +257,27 @@ export function RoutinesCard() {
                       {value.replaceAll("_", " ")}
                     </option>
                   ))}
+                </select>
+              </label>
+              <label>
+                Offset preset
+                <select
+                  value={
+                    [0, -5, -10, -15, -30, -45, -60, 5, 10, 15, 30, 45, 60].includes(offset)
+                      ? String(offset)
+                      : "custom"
+                  }
+                  onChange={(e) => {
+                    if (e.target.value !== "custom") setOffset(Number(e.target.value));
+                  }}
+                >
+                  <option value="0">Immediately</option>
+                  {[-5, -10, -15, -30, -45, -60, 5, 10, 15, 30, 45, 60].map((n) => (
+                    <option key={n} value={n}>
+                      {Math.abs(n)} minutes {n < 0 ? "before" : "after"}
+                    </option>
+                  ))}
+                  <option value="custom">Custom offset</option>
                 </select>
               </label>
               <label>
@@ -241,6 +331,9 @@ export function RoutinesCard() {
                   setType(routine.type);
                   setDuration(routine.durationMinutes);
                   setRecurrence(routine.recurrence);
+                  setWeekdays(routine.weekdays ?? []);
+                  setCalendarSyncEnabled(routine.calendarSyncEnabled ?? false);
+                  setNotificationMinutes(routine.notificationMinutes ?? null);
                   setTimingKind(routine.timing.kind);
                   if (routine.timing.kind === "fixed") setTime(routine.timing.time);
                   else {

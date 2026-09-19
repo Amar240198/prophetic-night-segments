@@ -19,6 +19,7 @@ export async function syncGoogleEvent(
   session: GoogleSession,
   date: string,
   event: CalendarEvent,
+  verifyMutableContent = false,
 ): Promise<"created" | "updated" | "existing"> {
   if (event.serviceDate && event.serviceDate !== date)
     throw new GoogleCalendarError("IDENTITY_CONFLICT", 409);
@@ -34,6 +35,7 @@ export async function syncGoogleEvent(
     mapping.connectionId !== session.connectionId
   )
     throw new GoogleCalendarError("IDENTITY_CONFLICT", 409);
+  if (mapping.deletedAt) throw new GoogleCalendarError("EVENT_DELETED", 409);
   const id = mapping.providerEventId;
   const base = googleEventPayload(event);
   const hash = createHash("sha256")
@@ -89,7 +91,17 @@ export async function syncGoogleEvent(
   const properties = body.extendedProperties?.private;
   if (!googleOwnershipAdapter.verifyOwnership(body, mapping))
     throw new GoogleCalendarError("EVENT_NOT_OWNED", 409);
-  if (properties?.payloadHash === hash && mapping.metadataVersion === 1) status = "existing";
+  const contentMatches =
+    !verifyMutableContent ||
+    (body.summary === base.summary &&
+      body.description === base.description &&
+      Date.parse(body.start?.dateTime) === Date.parse(base.start.dateTime) &&
+      Date.parse(body.end?.dateTime) === Date.parse(base.end.dateTime) &&
+      body.start?.timeZone === base.start.timeZone &&
+      body.end?.timeZone === base.end.timeZone &&
+      JSON.stringify(body.reminders) === JSON.stringify(base.reminders));
+  if (properties?.payloadHash === hash && mapping.metadataVersion === 1 && contentMatches)
+    status = "existing";
   else {
     if (typeof body.etag !== "string" || !body.etag)
       throw new GoogleCalendarError("EVENT_CHANGED", 409);

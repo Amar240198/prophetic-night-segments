@@ -2,7 +2,7 @@
 import { createCipheriv, createDecipheriv, randomBytes, createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { GoogleCalendarError } from "./errors";
-import { findSession, updateTokens } from "./database.server";
+import { database, findSession, updateTokens, type StoredSession } from "./database.server";
 import { decryptToken, encryptToken } from "./tokens.server";
 
 export const SESSION_COOKIE = "pns_google_session";
@@ -104,12 +104,18 @@ export function sessionId(request: NextRequest): string | null {
 }
 
 export async function readSession(request: NextRequest): Promise<GoogleSession> {
-  const config = googleConfig();
   const raw = sessionId(request);
   if (!request.cookies.get(SESSION_COOKIE)?.value)
     throw new GoogleCalendarError("UNAUTHENTICATED", 401);
   if (!raw) throw new GoogleCalendarError("SESSION_EXPIRED", 401);
-  let row = await findSession(sessionHash(raw));
+  return readStoredSession(() => findSession(sessionHash(raw)));
+}
+
+async function readStoredSession(
+  load: () => Promise<StoredSession | null>,
+): Promise<GoogleSession> {
+  const config = googleConfig();
+  let row = await load();
   if (
     !row ||
     !Number.isFinite(Date.parse(row.session_expires_at)) ||
@@ -160,7 +166,7 @@ export async function readSession(request: NextRequest): Promise<GoogleSession> 
       new Date(Date.now() + Math.min(token.expires_in, 3600) * 1000).toISOString(),
     );
     // Re-read after CAS, including concurrent disconnect/reconnect.
-    row = await findSession(sessionHash(raw));
+    row = await load();
     if (
       !row ||
       Date.parse(row.session_expires_at) <= Date.now() + 10_000 ||
@@ -178,6 +184,21 @@ export async function readSession(request: NextRequest): Promise<GoogleSession> 
       : Math.min(Date.parse(row.session_expires_at), Date.parse(row.access_token_expires_at)),
     accessExpiresAt: Date.parse(row.access_token_expires_at),
   };
+}
+
+/** Background access is tied to a durable account binding, never a browser cookie. */
+export async function readAccountGoogleSession(
+  userId: string,
+  connectionId: string,
+): Promise<GoogleSession> {
+  return readStoredSession(async () => {
+    const rows = await database()`SELECT id AS connection_id, google_subject, google_account_email,
+      encrypted_access_token, encrypted_refresh_token, access_token_expires_at,
+      (now() + interval '1 hour')::text AS session_expires_at
+      FROM google_connections WHERE id = ${connectionId} AND user_id = ${userId}
+      AND provider = 'google' AND disconnected_at IS NULL AND encrypted_access_token IS NOT NULL`;
+    return (rows[0] as StoredSession | undefined) ?? null;
+  });
 }
 
 export function setPrivateCookie(

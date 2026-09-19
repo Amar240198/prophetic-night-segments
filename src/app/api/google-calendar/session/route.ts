@@ -1,10 +1,16 @@
 import { NextRequest } from "next/server";
 import { GoogleCalendarError } from "@/lib/google-calendar/errors";
-import { errorResponse, privateResponse, readSession } from "@/lib/google-calendar/session.server";
+import {
+  errorResponse,
+  googleConfig,
+  privateResponse,
+  readSession,
+} from "@/lib/google-calendar/session.server";
 import { readSyncPreference, readSyncSelection } from "@/lib/google-calendar/sync-database.server";
 export const runtime = "nodejs";
 export async function GET(request: NextRequest) {
   try {
+    googleConfig();
     const session = await readSession(request);
     return privateResponse({
       connected: true,

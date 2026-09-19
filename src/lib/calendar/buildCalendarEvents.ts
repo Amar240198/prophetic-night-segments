@@ -37,6 +37,7 @@ export interface CalendarEvent {
   identityScope?: "night" | "daily-prayer" | "routine";
   /** Export identity, assigned once by the persistent export registry. */
   appEventId?: string;
+  notificationMinutes?: number | null;
   title: string;
   start: string;
   end: string;

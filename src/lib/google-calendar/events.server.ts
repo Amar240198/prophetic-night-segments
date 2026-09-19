@@ -99,7 +99,16 @@ export function googleEventPayload(event: CalendarEvent) {
     end: { dateTime: end, timeZone: event.timeZone },
     transparency: "transparent",
     visibility: "private",
-    reminders: { useDefault: true },
+    reminders:
+      event.notificationMinutes === undefined
+        ? { useDefault: true }
+        : {
+            useDefault: false,
+            overrides:
+              event.notificationMinutes === null
+                ? []
+                : [{ method: "popup", minutes: event.notificationMinutes }],
+          },
     extendedProperties: {
       private: { application: "prophetic-night-segments", planEvent: event.id },
     },
