@@ -10,6 +10,7 @@ import {
 export const GOOGLE_EVENT_TITLES = {
   ...NIGHT_PART_TITLES,
   wake: "Qiyam / Tahajjud — Wake Up",
+  "buffer-before-fajr": "Buffer Before Fajr",
   "last-third": "Qiyam / Tahajjud — Last Third Begins",
   "part-4": "Qiyam / Tahajjud — Beginning of Part 4",
   "part-5": "Qiyam / Tahajjud — Beginning of Part 5",
@@ -68,6 +69,10 @@ export function buildGooglePlan(
   }).alarms;
   return [
     make("wake", base[0]!.start, base[0]!.end, options.dawudSelected),
+    make(
+      "buffer-before-fajr",
+      new Date(Date.parse(result.night.end) - options.wakeBufferMinutes * 60_000).toISOString(),
+    ),
     make("last-third", result.lastThird.start),
     ...base.filter((event) => Object.hasOwn(NIGHT_PART_TITLES, event.id)),
     make("final-sixth", result.dawudPattern.finalSleep.start),

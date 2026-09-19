@@ -26,7 +26,7 @@ export function CalendarCard({
   wakeBufferMinutes?: number;
   syncContext?: SyncContext | null;
 }) {
-  const [selected, setSelected] = useState(["wake", "last-third", "fajr"]);
+  const [selected, setSelected] = useState(["wake", "buffer-before-fajr", "last-third", "fajr"]);
   const [downloadError, setDownloadError] = useState("");
   const minutes = firstAdhanMinutes ?? wakeBufferMinutes;
   const valid = Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440;

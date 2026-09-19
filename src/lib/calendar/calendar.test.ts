@@ -30,6 +30,7 @@ describe("calendar layer", () => {
     const events = buildCalendarEvents(night, options);
     expect(events.map(({ id, start }) => [id, Date.parse(start)])).toEqual([
       ["wake", Date.parse("2026-01-02T01:45:00Z")],
+      ["buffer-before-fajr", Date.parse("2026-01-02T05:45:00Z")],
       ["last-third", Date.parse(night.lastThird.start)],
       ...night.boundaries
         .slice(0, 6)

@@ -14,6 +14,7 @@ export type NightPartEventId = keyof typeof NIGHT_PART_TITLES;
 export type CalendarEventId =
   | NightPartEventId
   | "wake"
+  | "buffer-before-fajr"
   | "last-third"
   | "final-sixth"
   | "prayer"
@@ -177,6 +178,9 @@ export function buildCalendarEvents(
   const wake = Temporal.Instant.from(window.start)
     .subtract({ minutes: options.wakeBufferMinutes })
     .toString();
+  const bufferBeforeFajr = Temporal.Instant.from(result.night.end)
+    .subtract({ minutes: options.wakeBufferMinutes })
+    .toString();
   const display = (value: string) => formatCalendarTime(value, timeZone);
   const description = [
     "Calculated by Prophetic Night Segments (Sixth of the Night).",
@@ -204,6 +208,7 @@ export function buildCalendarEvents(
   });
   return [
     event("wake", "Qiyam / Tahajjud — Wake Up", wake),
+    event("buffer-before-fajr", "Buffer Before Fajr", bufferBeforeFajr),
     event("last-third", "Qiyam / Tahajjud — Last Third Begins", result.lastThird.start),
     ...Object.entries(NIGHT_PART_TITLES).map(([id, title], index) =>
       event(
