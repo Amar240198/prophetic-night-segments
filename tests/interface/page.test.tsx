@@ -97,8 +97,7 @@ describe("Prophetic Night Segments interface", () => {
     const schedule = within(
       screen.getByRole("region", { name: "Fajr and wake schedule" }),
     ).getByRole("list");
-    expect(schedule).toHaveTextContent("Buffer Wake-Up Time");
-    expect(schedule).toHaveTextContent("Wake before Fajr");
+    expect(schedule).toHaveTextContent("Buffer Before Fajr");
     expect(schedule).toHaveTextContent("2:45");
     expect(schedule).toHaveTextContent("Buffer Before Fajr");
     expect(schedule).toHaveTextContent("Fajr");

@@ -17,6 +17,15 @@ describe("calendar export", () => {
     expect(calendar).toContain("DTSTART:20260102T050000Z");
   });
 
+  it("shows one active buffer and uses the selected buffer minutes", () => {
+    const selected = createNightEndSchedule(result, 20, 30);
+    expect(selected.map((event) => event.label)).toEqual(["Buffer Before Fajr", "Fajr"]);
+    expect(selected[0]?.instant).toBe("2026-01-02T05:00:00.000Z");
+
+    const defaulted = createNightEndSchedule(result, 20, null);
+    expect(defaulted.map((event) => event.label)).toEqual(["Buffer Wake-Up Time", "Fajr"]);
+  });
+
   it("omits the Wake before Fajr reminder when it is off", async () => {
     expect(await createCalendarContents(result, {}, null)).not.toContain("Wake before Fajr");
   });
@@ -30,13 +39,8 @@ describe("calendar export", () => {
     });
     const schedule = createNightEndSchedule(resultWithWakeBuffer, 30, 30);
 
-    expect(schedule.map((event) => event.label)).toEqual([
-      "Buffer Wake-Up Time",
-      "Buffer Before Fajr",
-      "Wake before Fajr",
-      "Fajr",
-    ]);
-    expect(schedule[1]!.instant).toBe(schedule[2]!.instant);
+    expect(schedule.map((event) => event.label)).toEqual(["Buffer Before Fajr", "Fajr"]);
+    expect(schedule[0]!.instant).toBe("2026-01-02T05:00:00.000Z");
     expect(schedule.at(-1)).toMatchObject({
       label: "Fajr",
       instant: resultWithWakeBuffer.night.end,

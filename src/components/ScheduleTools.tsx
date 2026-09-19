@@ -21,26 +21,18 @@ export function createNightEndSchedule(
   firstAdhanMinutes: number | null,
 ): NightEndEvent[] {
   const fajr = Date.parse(result.night.end);
+  const selectedBuffer = firstAdhanMinutes ?? fajrPreparationMinutes;
   const events: NightEndEvent[] = [
     {
-      id: "buffer-wake-up",
-      label: "Buffer Wake-Up Time",
-      instant: result.dawudPattern.fajrWake.suggestedAlarm,
-    },
-    {
-      id: "buffer-before-fajr",
-      label: "Buffer Before Fajr",
-      instant: new Date(fajr - fajrPreparationMinutes * 60_000).toISOString(),
+      id: firstAdhanMinutes === null ? "buffer-wake-up" : "buffer-before-fajr",
+      label: firstAdhanMinutes === null ? "Buffer Wake-Up Time" : "Buffer Before Fajr",
+      instant:
+        firstAdhanMinutes === null
+          ? result.dawudPattern.fajrWake.suggestedAlarm
+          : new Date(fajr - selectedBuffer * 60_000).toISOString(),
     },
     { id: "fajr", label: "Fajr", instant: result.night.end },
   ];
-  if (firstAdhanMinutes !== null) {
-    events.push({
-      id: "first-adhan-reminder",
-      label: "Wake before Fajr",
-      instant: new Date(fajr - firstAdhanMinutes * 60_000).toISOString(),
-    });
-  }
   return events.sort((left, right) => Date.parse(left.instant) - Date.parse(right.instant));
 }
 
