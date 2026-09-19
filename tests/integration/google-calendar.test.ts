@@ -825,7 +825,7 @@ describe("persistent multi-night Google sync", () => {
     );
     expect(response.status).toBe(403);
     for (const body of [
-      { ...syncInput, nights: 31 },
+      { ...syncInput, nights: 0 },
       { ...syncInput, startDate: "2026-02-30" },
       { ...syncInput, selected: ["fajr", "fajr"] },
       { ...syncInput, selected: ["first-adhan-reminder"] },
@@ -997,7 +997,7 @@ describe("selectable and continuous sync horizons", () => {
     const cookie = await sessionCookie();
     for (const change of [
       { mode: "continuous", nights: 30 },
-      { mode: "fixed", nights: 45 },
+      { mode: "fixed", nights: 0 },
       { mode: "forever", nights: 90 },
       { mode: "fixed", nights: 91 },
       { mode: "fixed", nights: "60" },

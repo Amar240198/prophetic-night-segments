@@ -30,6 +30,11 @@ interface Connection {
 const buttonClass =
   "border border-[#d0ae67] px-4 py-2 text-sm font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10 disabled:opacity-40";
 const CANONICAL_ORIGIN = "https://sixth-of-the-night.vercel.app";
+function needsCanonicalRedirect() {
+  return (
+    window.location.hostname.endsWith(".vercel.app") && window.location.origin !== CANONICAL_ORIGIN
+  );
+}
 export function GoogleCalendarSection({
   events,
   valid,
@@ -177,6 +182,12 @@ export function GoogleCalendarSection({
       void checkConnection().then((connected) => {
         if (active && !connected && closedAt !== null && Date.now() - closedAt >= 15_000) {
           setConnecting(false);
+          if (needsCanonicalRedirect()) {
+            window.location.assign(
+              `${CANONICAL_ORIGIN}${window.location.pathname}${window.location.search}`,
+            );
+            return;
+          }
           setError(
             "Google sign-in closed, but a connection could not be confirmed. Please reconnect and approve Calendar access.",
           );
@@ -202,7 +213,11 @@ export function GoogleCalendarSection({
         event.data?.type !== "pns-google-calendar"
       )
         return;
-      if (event.origin !== window.location.origin && event.data.status === "connected") {
+      if (
+        event.origin !== window.location.origin &&
+        event.data.status === "connected" &&
+        needsCanonicalRedirect()
+      ) {
         window.location.assign(
           `${CANONICAL_ORIGIN}${window.location.pathname}${window.location.search}`,
         );
@@ -242,10 +257,7 @@ export function GoogleCalendarSection({
   function connect() {
     setError("");
     setMessage("");
-    const oauthOrigin =
-      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
-        ? window.location.origin
-        : CANONICAL_ORIGIN;
+    const oauthOrigin = needsCanonicalRedirect() ? CANONICAL_ORIGIN : window.location.origin;
     popup.current = window.open(
       oauthOrigin === window.location.origin
         ? "/api/google-calendar/connect"
