@@ -29,6 +29,7 @@ interface Connection {
 }
 const buttonClass =
   "border border-[#d0ae67] px-4 py-2 text-sm font-semibold text-[#d0ae67] hover:bg-[#d0ae67]/10 disabled:opacity-40";
+const CANONICAL_ORIGIN = "https://sixth-of-the-night.vercel.app";
 export function GoogleCalendarSection({
   events,
   valid,
@@ -63,9 +64,19 @@ export function GoogleCalendarSection({
   const [retryRemoval, setRetryRemoval] = useState<RemovalRequest | null>(null);
   const selectionRevision = useRef<string | null | undefined>(undefined);
   const selectionEpoch = useRef(0);
-  const [horizon, setHorizon] = useState<number | "continuous">(DEFAULT_SYNC_NIGHTS);
+  const [horizon, setHorizon] = useState<number | "continuous" | "custom">(DEFAULT_SYNC_NIGHTS);
+  const [customHorizon, setCustomHorizon] = useState(String(DEFAULT_SYNC_NIGHTS));
   const horizonEdited = useRef(false);
-  const syncNights = horizon === "continuous" ? CONTINUOUS_SYNC_NIGHTS : horizon;
+  const customNights = Number(customHorizon);
+  const customHorizonValid =
+    Number.isInteger(customNights) && customNights >= 1 && customNights <= 90;
+  const syncNights =
+    horizon === "continuous"
+      ? CONTINUOUS_SYNC_NIGHTS
+      : horizon === "custom"
+        ? customNights
+        : horizon;
+  const horizonValid = horizon !== "custom" || customHorizonValid;
   const checking = useRef<Promise<boolean> | null>(null);
   const popup = useRef<Window | null>(null);
   const inFlight = useRef(false);
@@ -108,9 +119,17 @@ export function GoogleCalendarSection({
           if (body.syncPreference.mode === "continuous") setHorizon("continuous");
           else if (
             body.syncPreference.mode === "fixed" &&
-            FIXED_SYNC_HORIZONS.includes(body.syncPreference.horizonDays)
-          )
-            setHorizon(body.syncPreference.horizonDays);
+            Number.isInteger(body.syncPreference.horizonDays) &&
+            body.syncPreference.horizonDays >= 1 &&
+            body.syncPreference.horizonDays <= 90
+          ) {
+            if (FIXED_SYNC_HORIZONS.includes(body.syncPreference.horizonDays))
+              setHorizon(body.syncPreference.horizonDays);
+            else {
+              setCustomHorizon(String(body.syncPreference.horizonDays));
+              setHorizon("custom");
+            }
+          }
         }
         if (body.connected) {
           setConnecting(false);
@@ -178,11 +197,17 @@ export function GoogleCalendarSection({
     }, 600_000);
     function receive(event: MessageEvent) {
       if (
-        event.origin !== window.location.origin ||
+        ![window.location.origin, CANONICAL_ORIGIN].includes(event.origin) ||
         event.source !== popup.current ||
         event.data?.type !== "pns-google-calendar"
       )
         return;
+      if (event.origin !== window.location.origin && event.data.status === "connected") {
+        window.location.assign(
+          `${CANONICAL_ORIGIN}${window.location.pathname}${window.location.search}`,
+        );
+        return;
+      }
       if (event.data.status === "connected") verify();
       else {
         setConnecting(false);
@@ -217,8 +242,14 @@ export function GoogleCalendarSection({
   function connect() {
     setError("");
     setMessage("");
+    const oauthOrigin =
+      window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1"
+        ? window.location.origin
+        : CANONICAL_ORIGIN;
     popup.current = window.open(
-      "/api/google-calendar/connect",
+      oauthOrigin === window.location.origin
+        ? "/api/google-calendar/connect"
+        : `${oauthOrigin}/api/google-calendar/connect`,
       "pns-google-calendar",
       "popup,width=520,height=720",
     );
@@ -304,7 +335,14 @@ export function GoogleCalendarSection({
     }
   }
   async function sync() {
-    if (inFlight.current || !valid || !selectedEvents.length || !syncContext || !syncOptions)
+    if (
+      inFlight.current ||
+      !valid ||
+      !horizonValid ||
+      !selectedEvents.length ||
+      !syncContext ||
+      !syncOptions
+    )
       return;
     inFlight.current = true;
     selectionEpoch.current++;
@@ -575,23 +613,44 @@ export function GoogleCalendarSection({
                   <fieldset disabled={busy} className="mb-4">
                     <legend className="mb-2">Sync calendar for:</legend>
                     <div className="flex flex-wrap gap-3">
-                      {[...FIXED_SYNC_HORIZONS, "continuous" as const].map((choice) => (
-                        <label key={choice} className={`${buttonClass} flex items-center gap-2`}>
-                          <input
-                            type="radio"
-                            name="google-sync-horizon"
-                            value={choice}
-                            checked={horizon === choice}
-                            onChange={() => {
-                              horizonEdited.current = true;
-                              setHorizon(choice);
-                            }}
-                          />
-                          {choice === "continuous" ? "Continuous" : `${choice} days`}
-                        </label>
-                      ))}
+                      {[...FIXED_SYNC_HORIZONS, "continuous" as const, "custom" as const].map(
+                        (choice) => (
+                          <label key={choice} className={`${buttonClass} flex items-center gap-2`}>
+                            <input
+                              type="radio"
+                              name="google-sync-horizon"
+                              value={choice}
+                              checked={horizon === choice}
+                              onChange={() => {
+                                horizonEdited.current = true;
+                                setHorizon(choice);
+                              }}
+                            />
+                            {choice === "continuous"
+                              ? "Continuous"
+                              : choice === "custom"
+                                ? "Custom"
+                                : `${choice} days`}
+                          </label>
+                        ),
+                      )}
                     </div>
                   </fieldset>
+                  {horizon === "custom" && (
+                    <label className="mb-3 grid max-w-xs gap-2 text-sm">
+                      Custom horizon (days)
+                      <input
+                        type="number"
+                        min="1"
+                        max="90"
+                        step="1"
+                        value={customHorizon}
+                        onChange={(event) => setCustomHorizon(event.target.value)}
+                        aria-invalid={!customHorizonValid}
+                        className="border border-white/20 bg-[#06151a] px-3 py-2"
+                      />
+                    </label>
+                  )}
                   {horizon === "continuous" && (
                     <p className="mb-3 text-sm" role="note">
                       Continuous saves your rolling-sync preference and syncs the first{" "}
@@ -608,7 +667,9 @@ export function GoogleCalendarSection({
                   <button
                     type="button"
                     className={`${buttonClass} mt-3`}
-                    disabled={busy || !valid || !selectedEvents.length || !serviceDate}
+                    disabled={
+                      busy || !valid || !horizonValid || !selectedEvents.length || !serviceDate
+                    }
                     onClick={() => void sync()}
                   >
                     {syncing
@@ -625,7 +686,7 @@ export function GoogleCalendarSection({
                     type="button"
                     className={`${buttonClass} mt-3`}
                     aria-describedby="horizon-removal-scope"
-                    disabled={busy || !selectedEvents.length}
+                    disabled={busy || !horizonValid || !selectedEvents.length}
                     onClick={() =>
                       void remove({
                         scope: "horizon",

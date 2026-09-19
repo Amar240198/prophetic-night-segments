@@ -3,8 +3,6 @@
 import { useMemo, useState } from "react";
 import type { DailyPrayerSchedule } from "@/lib/calendar/buildCalendarEvents";
 import { buildDailyPrayerEvents } from "@/lib/calendar/buildCalendarEvents";
-import { assignExportIdentities } from "@/lib/calendar/exportIdentity";
-import { generateICS } from "@/lib/calendar/generateICS";
 import type { SyncContext } from "@/lib/google-calendar/sync";
 import { GoogleCalendarSection } from "./GoogleCalendarSection";
 import { loadPreferences, savePreferences } from "@/lib/product/preferences";
@@ -33,9 +31,7 @@ export function AllPrayersCard({
     return saved.length ? saved : requiredIds;
   });
   const [now] = useState(() => Date.now());
-  const [error, setError] = useState("");
   const events = useMemo(() => buildDailyPrayerEvents(schedule), [schedule]);
-  const selectedEvents = events.filter((event) => selected.includes(event.id));
   const sunrise = schedule.sunrise;
   function updateSelection(next: string[]) {
     setSelected(next);
@@ -44,22 +40,6 @@ export function AllPrayersCard({
         ...loadPreferences(),
         selectedPrayers: next.map((id) => id.replace(/^prayer-/, "")),
       });
-  }
-  async function download() {
-    try {
-      const identities = await assignExportIdentities(selectedEvents);
-      const blob = new Blob([generateICS(identities, new Date().toISOString())], {
-        type: "text/calendar;charset=utf-8",
-      });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = `miqat-prayers-${schedule.date}.ics`;
-      anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    } catch {
-      setError("The prayer calendar file could not be downloaded.");
-    }
   }
   const display = (id: string) => {
     const event = events.find((item) => item.id === id);
@@ -140,20 +120,7 @@ export function AllPrayersCard({
         >
           Select all
         </button>
-        <button
-          type="button"
-          className="border border-white/20 px-5 py-3"
-          disabled={!selectedEvents.length}
-          onClick={() => void download()}
-        >
-          Download selected (.ics)
-        </button>
       </div>
-      {error && (
-        <p role="alert" className="mt-3 text-red-300">
-          {error}
-        </p>
-      )}
       <GoogleCalendarSection
         key={selected.join(",")}
         events={events}

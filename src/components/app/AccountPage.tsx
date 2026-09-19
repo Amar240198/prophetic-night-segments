@@ -182,27 +182,29 @@ export function AccountPage({ user }: { user: AppUser | null }) {
               </button>
             </form>
           )}
-          {!signup && !forgotPassword && (
-            <button
-              className="module-link"
-              onClick={() => {
-                setForgotPassword(true);
-                setError("");
-              }}
-            >
-              Forgot password?
-            </button>
-          )}
           {!forgotPassword && (
-            <button
-              className="module-link"
-              onClick={() => {
-                setSignup(!signup);
-                setError("");
-              }}
-            >
-              {signup ? "Already have an account? Sign in" : "Create a free account"}
-            </button>
+            <div className="flex items-center gap-[10px]">
+              {!signup && (
+                <button
+                  className="module-link"
+                  onClick={() => {
+                    setForgotPassword(true);
+                    setError("");
+                  }}
+                >
+                  Forgot password?
+                </button>
+              )}
+              <button
+                className="module-link"
+                onClick={() => {
+                  setSignup(!signup);
+                  setError("");
+                }}
+              >
+                {signup ? "Already have an account? Sign in" : "Create a free account"}
+              </button>
+            </div>
           )}
           <p className="mt-4">
             The free Sixth calculator and basic prayer timetable remain available without an

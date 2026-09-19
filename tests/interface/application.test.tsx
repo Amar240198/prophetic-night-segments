@@ -163,7 +163,9 @@ describe("Miqāt information architecture", () => {
     expect(await screen.findByText("Today’s prayer timetable")).toBeInTheDocument();
     expect(screen.getByText("informational")).toBeInTheDocument();
     expect(screen.queryByText("Conventional Night Division")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Download selected (.ics)" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Download selected (.ics)" }),
+    ).not.toBeInTheDocument();
   });
   it("preserves fasting programme controls and dated Dāwūd settings", () => {
     render(<FastingCard date="2026-09-18" />);

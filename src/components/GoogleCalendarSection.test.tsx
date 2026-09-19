@@ -409,7 +409,7 @@ it.each([
       await screen.findByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }),
     );
     expect(screen.getByRole("group", { name: "Sync calendar for:" })).toBeInTheDocument();
-    expect(screen.getAllByRole("radio")).toHaveLength(4);
+    expect(screen.getAllByRole("radio")).toHaveLength(5);
     expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
     expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("radio", { name: label }));

@@ -66,7 +66,7 @@ export function validateSyncRequest(value: unknown): SyncRequest {
     if (
       mode === "fixed" &&
       !FIXED_SYNC_HORIZONS.includes(nights) &&
-      !(body.mode === undefined && nights <= DEFAULT_SYNC_NIGHTS)
+      !(nights >= 1 && nights <= MAX_SYNC_NIGHTS)
     )
       throw new Error();
     if (
