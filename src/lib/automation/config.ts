@@ -4,7 +4,7 @@ import type { FastingProgramme } from "@/lib/fasting/schedule";
 export interface AutomationConfig {
   source: SyncSource;
   timezone: string;
-  horizon: 30 | 60 | 90 | "continuous";
+  horizon: number | "continuous";
   calendarId: "primary";
   modules: Array<"prayers" | "routines" | "night" | "fasting">;
   selectedPrayers: Array<"fajr" | "dhuhr" | "asr" | "maghrib" | "isha">;
@@ -36,7 +36,11 @@ export function validateAutomationConfig(
   const input = value as AutomationConfig;
   Temporal.Instant.fromEpochMilliseconds(0).toZonedDateTimeISO(input.timezone);
   if (
-    ![30, 60, 90, "continuous"].includes(input.horizon) ||
+    (input.horizon !== "continuous" &&
+      (typeof input.horizon !== "number" ||
+        !Number.isInteger(input.horizon) ||
+        input.horizon < 1 ||
+        input.horizon > 90)) ||
     input.calendarId !== "primary" ||
     !["boundaries", "dawud"].includes(input.night) ||
     typeof input.onboardingComplete !== "boolean"

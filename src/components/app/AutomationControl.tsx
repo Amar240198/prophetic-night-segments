@@ -13,6 +13,7 @@ export function AutomationControl() {
   const [busy, setBusy] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [customHorizon, setCustomHorizon] = useState("30");
   useEffect(() => {
     let active = true;
     fetch("/api/account/automation", { cache: "no-store" })
@@ -22,6 +23,7 @@ export function AutomationControl() {
         if (!body.config?.source) throw new Error("Automation settings could not be loaded.");
         if (!active) return;
         setConfig(body.config);
+        setCustomHorizon(String(body.config.horizon === "continuous" ? 30 : body.config.horizon));
         setRevision(body.state?.revision ?? null);
         setStatus(body.state ?? {});
         setEntitlement(body.entitlement ?? {});
@@ -217,17 +219,27 @@ export function AutomationControl() {
           <label>
             Sync horizon
             <select
-              value={config.horizon}
-              onChange={(e) =>
+              value={
+                config.horizon === "continuous"
+                  ? "continuous"
+                  : [30, 60, 90].includes(config.horizon)
+                    ? String(config.horizon)
+                    : "custom"
+              }
+              onChange={(e) => {
+                const value = e.target.value;
                 setConfig({
                   ...config,
                   horizon:
-                    e.target.value === "continuous"
+                    value === "continuous"
                       ? "continuous"
-                      : (Number(e.target.value) as 30 | 60 | 90),
-                })
-              }
+                      : value === "custom"
+                        ? Number(customHorizon)
+                        : Number(value),
+                });
+              }}
             >
+              <option value="custom">Custom</option>
               {[30, 60, 90].map((days) => (
                 <option key={days} value={days}>
                   {days} days
@@ -236,6 +248,22 @@ export function AutomationControl() {
               <option value="continuous">Continuous (rolling 90 days)</option>
             </select>
           </label>
+          {config.horizon !== "continuous" && ![30, 60, 90].includes(config.horizon) ? (
+            <label>
+              Custom horizon (days)
+              <input
+                type="number"
+                min="1"
+                max="90"
+                step="1"
+                value={customHorizon}
+                onChange={(e) => {
+                  setCustomHorizon(e.target.value);
+                  setConfig({ ...config, horizon: Number(e.target.value) });
+                }}
+              />
+            </label>
+          ) : null}
           <fieldset>
             <legend>Automated modules</legend>
             {(["prayers", "routines", "night", "fasting"] as const).map((module) => (
