@@ -28,8 +28,9 @@ const result = calculateNightSegments({
 
 it("uses the selected night-map buffer and disables empty exports", () => {
   render(<CalendarCard result={result} dawudSelected={false} prayerSource="Manual" />);
-  expect(screen.getByLabelText(/Qiyam \/ Tahajjud — Wake Up/)).toBeChecked();
-  expect(screen.getAllByText(/02:00:00/).length).toBeGreaterThan(0);
+  expect(screen.queryByLabelText(/Qiyam \/ Tahajjud — Wake Up/)).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Buffer Before Fajr")).not.toBeInTheDocument();
+  expect(screen.getByLabelText(/Qiyam \/ Tahajjud — Last Third Begins/)).toBeChecked();
   expect(screen.queryByLabelText("Wake-up buffer")).not.toBeInTheDocument();
   for (const checkbox of screen.getAllByRole("checkbox"))
     if ((checkbox as HTMLInputElement).checked) fireEvent.click(checkbox);

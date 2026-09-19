@@ -68,11 +68,22 @@ export function buildGooglePlan(
     ...(options.firstAdhanMinutes !== null ? { minutesBeforeFajr: options.firstAdhanMinutes } : {}),
   }).alarms;
   return [
-    make("wake", base[0]!.start, base[0]!.end, options.dawudSelected),
-    make(
-      "buffer-before-fajr",
-      new Date(Date.parse(result.night.end) - options.wakeBufferMinutes * 60_000).toISOString(),
-    ),
+    ...(options.wakeBufferMinutes > 0
+      ? [
+          make(
+            "wake",
+            base.find((event) => event.id === "wake")!.start,
+            base.find((event) => event.id === "wake")!.end,
+            options.dawudSelected,
+          ),
+          make(
+            "buffer-before-fajr",
+            new Date(
+              Date.parse(result.night.end) - options.wakeBufferMinutes * 60_000,
+            ).toISOString(),
+          ),
+        ]
+      : []),
     make("last-third", result.lastThird.start),
     ...base.filter((event) => Object.hasOwn(NIGHT_PART_TITLES, event.id)),
     make("final-sixth", result.dawudPattern.finalSleep.start),

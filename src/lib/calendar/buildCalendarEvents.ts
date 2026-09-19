@@ -206,9 +206,15 @@ export function buildCalendarEvents(
     description,
     timeZone,
   });
+  const optionalBuffers =
+    options.wakeBufferMinutes > 0
+      ? [
+          event("wake", "Qiyam / Tahajjud — Wake Up", wake),
+          event("buffer-before-fajr", "Buffer Before Fajr", bufferBeforeFajr),
+        ]
+      : [];
   return [
-    event("wake", "Qiyam / Tahajjud — Wake Up", wake),
-    event("buffer-before-fajr", "Buffer Before Fajr", bufferBeforeFajr),
+    ...optionalBuffers,
     event("last-third", "Qiyam / Tahajjud — Last Third Begins", result.lastThird.start),
     ...Object.entries(NIGHT_PART_TITLES).map(([id, title], index) =>
       event(
