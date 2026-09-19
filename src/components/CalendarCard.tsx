@@ -34,11 +34,13 @@ export function CalendarCard({
   const [custom, setCustom] = useState("15");
   const [selected, setSelected] = useState(["wake", "last-third", "fajr"]);
   const [downloadError, setDownloadError] = useState("");
-  const value = buffer === "custom" ? custom : buffer;
+  const displayedBuffer = firstAdhanMinutes === null ? buffer : String(firstAdhanMinutes);
+  const value = displayedBuffer === "custom" ? custom : displayedBuffer;
   const minutes = value.trim() === "" ? NaN : Number(value);
   const valid = Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440;
   function updateBuffer(next: string) {
     setBuffer(next);
+    if (next === "custom") return;
     const nextMinutes = next === "custom" ? Number(custom) : Number(next);
     if (Number.isInteger(nextMinutes) && nextMinutes >= 0 && nextMinutes <= 1440) {
       onWakeBufferChange?.(nextMinutes);
@@ -88,7 +90,7 @@ export function CalendarCard({
       <label className="mt-5 grid gap-2 text-sm">
         Wake-up buffer
         <select
-          value={buffer}
+          value={displayedBuffer}
           onChange={(event) => updateBuffer(event.target.value)}
           className="border border-white/20 bg-[#06151a] px-3 py-2"
         >
@@ -100,7 +102,7 @@ export function CalendarCard({
           <option value="custom">Custom</option>
         </select>
       </label>
-      {buffer === "custom" && (
+      {displayedBuffer === "custom" && (
         <label className="mt-3 grid gap-2 text-sm">
           Custom wake-up buffer (minutes)
           <input

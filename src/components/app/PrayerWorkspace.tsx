@@ -1485,7 +1485,6 @@ export function PrayerWorkspace({
             <>
               <div id="sixth-of-the-night">
                 <CalendarCard
-                  key={`calendar-${firstAdhanMinutes ?? wakeBufferMinutes}`}
                   result={engineResult}
                   syncContext={syncContext}
                   dawudSelected={timelineView === "dawud"}
