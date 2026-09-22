@@ -4,7 +4,7 @@
 
 The monorepo separates three concerns:
 
-1. `prayer-providers` sources and normalises Maghrib/Fajr. The open-source `islamic.app` adapter is the runtime default; AlAdhan is available only as an explicitly configured alternative. Both are replaceable and confined to this layer.
+1. `prayer-providers` sources and normalises Maghrib/Fajr. AlAdhan is the coordinate calculation default; the open-source `islamic.app` adapter remains available for explicitly injected providers and legacy saved coordinate schedules. Both are replaceable and confined to this layer.
 2. `night-engine` validates and segments the supplied absolute interval.
 3. API and web layers transport and present the result.
 

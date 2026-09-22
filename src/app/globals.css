@@ -430,3 +430,116 @@ select {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
+/* Consolidated product surfaces */
+.product-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 46rem;
+}
+.product-form label {
+  display: grid;
+  gap: 0.4rem;
+}
+.product-form label:has(input[type="checkbox"]) {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+}
+.product-form input:not([type="checkbox"]),
+.product-form select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #486168;
+  background: #0a222a;
+  color: #f3efe5;
+  border-radius: 0.35rem;
+}
+.product-form fieldset {
+  display: grid;
+  gap: 1rem;
+  border: 1px solid #34515a;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+.product-form legend {
+  padding: 0 0.4rem;
+  font-weight: 600;
+}
+.product-form button,
+.prayer-analysis button {
+  padding: 0.7rem 1rem;
+  border: 1px solid #d0ae67;
+  border-radius: 0.3rem;
+  width: fit-content;
+}
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.day-timeline {
+  list-style: none;
+  padding: 0;
+  margin: 1.5rem 0;
+}
+.day-timeline li {
+  display: flex;
+  gap: 1.25rem;
+  align-items: flex-start;
+  padding: 1rem 0;
+  border-bottom: 1px solid #2d4850;
+}
+.day-timeline time {
+  min-width: 7rem;
+  font-variant-numeric: tabular-nums;
+  color: #dcc38c;
+}
+.day-timeline span {
+  display: block;
+  font-size: 0.85rem;
+  color: #b6c7c8;
+}
+.prayer-analysis {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  border-left: 3px solid #c5a46a;
+  background: #0d242c;
+}
+.prayer-analysis h3 {
+  font-size: 1.25rem;
+}
+.prayer-analysis details {
+  margin: 0.75rem 0;
+}
+.auth-page {
+  max-width: 36rem;
+  margin: 3rem auto;
+}
+.auth-page h1 {
+  font-size: 2rem;
+  margin: 2rem 0;
+}
+:focus-visible {
+  outline: 3px solid #e0c891;
+  outline-offset: 3px;
+}
+@media (max-width: 767px) {
+  .mobile-nav {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.15rem;
+  }
+  .mobile-nav a {
+    font-size: 0.7rem;
+    padding: 0.9rem 0.1rem;
+  }
+  .day-timeline li {
+    gap: 0.65rem;
+  }
+  .day-timeline time {
+    min-width: 6rem;
+  }
+  .app-content {
+    padding-bottom: 6rem;
+  }
+}

@@ -16,10 +16,12 @@ export interface SyncSelection {
   revision: string | null;
 }
 export type SyncSource =
-  | { kind: "london-unified" }
   | { kind: "aladhan"; options: Omit<FetchAlAdhanPrayerTimesOptions, "date" | "timeout"> }
   | {
       kind: "coordinates";
+      /** Omitted on legacy schedules, which retain islamic.app. */
+      provider?: "aladhan" | "islamic-app";
+      school?: 0 | 1;
       latitude: number;
       longitude: number;
       timeZone: string;

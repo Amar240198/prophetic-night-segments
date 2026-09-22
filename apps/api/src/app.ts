@@ -5,8 +5,7 @@ import swaggerUi from "@fastify/swagger-ui";
 import { calculateNightSegments, validateNightInput } from "@prophetic-night/night-engine";
 import {
   demoPrayerTimes,
-  IslamicAppPrayerTimeProvider,
-  LondonUnifiedPrayerTimeProvider,
+  AlAdhanPrayerTimeProvider,
   PrayerProviderError,
 } from "@prophetic-night/prayer-providers";
 import type { PrayerTimeProvider } from "@prophetic-night/prayer-providers";
@@ -68,7 +67,7 @@ const coordinateInputSchema = {
     calculationMethod: { type: "integer", minimum: 0 },
     prayerTimeSource: {
       type: "string",
-      enum: ["coordinates", "london-unified"],
+      enum: ["coordinates"],
       default: "coordinates",
     },
     locale: { type: "string", default: "en-GB" },
@@ -84,7 +83,7 @@ interface CoordinateRequest {
   serviceDate: string;
   timeZone: string;
   calculationMethod?: number;
-  prayerTimeSource?: "coordinates" | "london-unified";
+  prayerTimeSource?: "coordinates";
   locale?: string;
   displayFormat?: "12h" | "24h";
   showSeconds?: boolean;
@@ -93,13 +92,10 @@ interface CoordinateRequest {
 
 export interface BuildAppOptions {
   prayerTimeProvider?: PrayerTimeProvider;
-  londonUnifiedPrayerTimeProvider?: PrayerTimeProvider;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
-  const prayerTimeProvider = options.prayerTimeProvider ?? new IslamicAppPrayerTimeProvider();
-  const londonUnifiedPrayerTimeProvider =
-    options.londonUnifiedPrayerTimeProvider ?? new LondonUnifiedPrayerTimeProvider();
+  const prayerTimeProvider = options.prayerTimeProvider ?? new AlAdhanPrayerTimeProvider();
   const app = Fastify({
     logger: process.env.NODE_ENV !== "test",
     bodyLimit: 16 * 1024,
@@ -188,11 +184,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     },
     async (request, reply) => {
       try {
-        const selectedProvider =
-          request.body.prayerTimeSource === "london-unified"
-            ? londonUnifiedPrayerTimeProvider
-            : prayerTimeProvider;
-        const prayerTimes = await selectedProvider.getPrayerTimes(request.body);
+        const prayerTimes = await prayerTimeProvider.getPrayerTimes(request.body);
         const calculationInput: NightCalculationInput = {
           maghrib: prayerTimes.maghrib,
           fajr: prayerTimes.fajr,

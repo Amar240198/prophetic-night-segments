@@ -6,7 +6,6 @@ import {
   fetchAlAdhanPrayerTimes,
   type FetchAlAdhanPrayerTimesOptions,
 } from "@/lib/providers/aladhan";
-import { getLondonUnifiedPrayerTimes } from "@/lib/providers/london-unified";
 import { GoogleCalendarError } from "./errors";
 import { buildGooglePlan, GOOGLE_EVENT_TITLES, type GoogleEventId } from "./plan";
 import type { DailyPrayerSchedule } from "@/lib/calendar/buildCalendarEvents";
@@ -90,16 +89,23 @@ export function validateSyncRequest(value: unknown): SyncRequest {
       throw new Error();
     const raw = record(body.source);
     let source: SyncSource;
-    if (raw.kind === "london-unified") source = { kind: raw.kind };
-    else if (raw.kind === "coordinates") {
+    if (raw.kind === "coordinates") {
+      if (
+        raw.provider !== undefined &&
+        raw.provider !== "aladhan" &&
+        raw.provider !== "islamic-app"
+      )
+        throw new Error();
       const timeZone = text(raw.timeZone);
       Temporal.Instant.fromEpochMilliseconds(0).toZonedDateTimeISO(timeZone);
       source = {
         kind: raw.kind,
+        ...(raw.provider === undefined ? {} : { provider: raw.provider }),
         latitude: number(raw.latitude, -90, 90),
         longitude: number(raw.longitude, -180, 180),
         timeZone,
         calculationMethod: integer(raw.calculationMethod, 0, 99),
+        ...(raw.school === undefined ? {} : { school: integer(raw.school, 0, 1) as 0 | 1 }),
       };
     } else if (raw.kind === "aladhan") {
       const o = record(raw.options);
@@ -162,8 +168,9 @@ export function syncDates(startDate: string, nights: number): string[] {
 }
 
 export async function loadSyncNight(source: SyncSource, date: string) {
-  if (source.kind === "coordinates") {
-    const times = await new IslamicAppPrayerTimeProvider().getPrayerTimes({
+  if (source.kind === "coordinates" && source.provider !== "aladhan") {
+    const provider = new IslamicAppPrayerTimeProvider();
+    const times = await provider.getPrayerTimes({
       ...source,
       serviceDate: date,
     });
@@ -180,10 +187,24 @@ export async function loadSyncNight(source: SyncSource, date: string) {
         : undefined,
     };
   }
-  const times =
-    source.kind === "london-unified"
-      ? getLondonUnifiedPrayerTimes(date)
-      : await fetchAlAdhanPrayerTimes({ ...source.options, date, timeout: 5000 });
+  if (source.kind !== "aladhan" && source.kind !== "coordinates")
+    throw new GoogleCalendarError("INVALID_REQUEST");
+  const options =
+    source.kind === "aladhan"
+      ? source.options
+      : {
+          city: "",
+          country: "",
+          coordinates: {
+            latitude: source.latitude,
+            longitude: source.longitude,
+            timeZone: source.timeZone,
+          },
+          calculationMethod:
+            source.calculationMethod as FetchAlAdhanPrayerTimesOptions["calculationMethod"],
+          school: source.school ?? 0,
+        };
+  const times = await fetchAlAdhanPrayerTimes({ ...options, date, timeout: 5000 });
   return {
     maghrib: times.maghrib.iso,
     fajr: times.fajr.iso,
@@ -195,10 +216,7 @@ export async function loadSyncNight(source: SyncSource, date: string) {
           timeZone: times.timezone,
           source: times.source,
           ...times.dailyPrayerTimes,
-          asr:
-            "asr" in times.dailyPrayerTimes
-              ? times.dailyPrayerTimes.asr
-              : times.dailyPrayerTimes.asrStandard,
+          asr: times.dailyPrayerTimes.asr,
         } satisfies DailyPrayerSchedule)
       : undefined,
   };

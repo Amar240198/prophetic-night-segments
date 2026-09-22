@@ -9,6 +9,7 @@ import {
   sessionHash,
   CALENDAR_SCOPE,
   EMAIL_SCOPE,
+  WRITE_SCOPE,
   FLOW_COOKIE,
   SESSION_COOKIE,
   clearPrivateCookie,
@@ -29,9 +30,11 @@ export function completionRedirect(request: NextRequest, status: string) {
   return response;
 }
 
-export function startOAuth() {
+export function startOAuth(userId: string, management = false) {
   const config = googleConfig();
   const flow: OAuthFlow = {
+    userId,
+    management,
     state: randomBytes(32).toString("base64url"),
     verifier: randomBytes(32).toString("base64url"),
     expiresAt: Date.now() + 600_000,
@@ -41,14 +44,15 @@ export function startOAuth() {
     client_id: config.clientId,
     redirect_uri: config.redirectUri,
     response_type: "code",
-    scope: `${CALENDAR_SCOPE} ${EMAIL_SCOPE}`,
+    scope: `${CALENDAR_SCOPE} ${EMAIL_SCOPE}${management ? ` ${WRITE_SCOPE}` : ""}`,
+    include_granted_scopes: "true",
     access_type: "offline",
     prompt: "select_account consent",
     state: flow.state,
     code_challenge: createHash("sha256").update(flow.verifier).digest("base64url"),
     code_challenge_method: "S256",
   }).toString();
-  const response = NextResponse.redirect(url);
+  const response = NextResponse.redirect(url, 303);
   response.headers.set("Cache-Control", "no-store");
   response.headers.set("Referrer-Policy", "no-referrer");
   setPrivateCookie(response, FLOW_COOKIE, sealCookie(flow, FLOW_COOKIE), 600);
@@ -76,7 +80,8 @@ export async function finishOAuth(request: NextRequest) {
       throw new GoogleCalendarError("CONNECTION_FAILED");
     }
     const appUser = await readAppUserFromRequest(request);
-    if (!appUser) throw new GoogleCalendarError("UNAUTHENTICATED", 401);
+    if (!appUser || flow.userId !== appUser.id)
+      throw new GoogleCalendarError("UNAUTHENTICATED", 401);
     if (request.nextUrl.searchParams.get("error") === "access_denied")
       throw new GoogleCalendarError("PERMISSION_DENIED");
     const code = request.nextUrl.searchParams.get("code");
@@ -129,6 +134,8 @@ export async function finishOAuth(request: NextRequest) {
       user.verified_email !== true
     )
       throw new GoogleCalendarError("CONNECTION_FAILED");
+    if (flow.management && !token.scope.split(" ").includes(WRITE_SCOPE))
+      throw new GoogleCalendarError("PERMISSION_DENIED");
     const seconds = Math.min(Math.floor(token.expires_in), 3600);
     const opaqueId = randomBytes(32).toString("base64url");
     await persistConnection({
@@ -143,6 +150,8 @@ export async function finishOAuth(request: NextRequest) {
       sessionHash: sessionHash(opaqueId),
       sessionExpiresAt: new Date(Date.now() + SESSION_MAX_AGE * 1000).toISOString(),
       userId: appUser.id,
+      scopes: token.scope,
+      management: flow.management === true,
     });
     response = completionRedirect(request, "connected");
     setPrivateCookie(response, SESSION_COOKIE, opaqueId, SESSION_MAX_AGE);

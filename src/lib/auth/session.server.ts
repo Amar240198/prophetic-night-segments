@@ -82,28 +82,19 @@ export async function resetPassword(token: string, passwordHash: string): Promis
   const tokenHash = hash(token);
   const rows = await database()`
     WITH token AS (
-      SELECT user_id
-      FROM miqaat_password_resets
-      WHERE token_hash = ${tokenHash} AND used_at IS NULL AND expires_at > now()
+      UPDATE miqaat_password_resets SET used_at=now()
+      WHERE token_hash=${tokenHash} AND used_at IS NULL AND expires_at>now() RETURNING user_id
     ), updated AS (
-      UPDATE miqaat_users
-      SET password_hash = ${passwordHash}
-      WHERE id IN (SELECT user_id FROM token)
-      RETURNING id
-    ), consumed AS (
-      UPDATE miqaat_password_resets
-      SET used_at = now()
-      WHERE token_hash = ${tokenHash} AND user_id IN (SELECT id FROM updated)
-      RETURNING user_id
-    )
+      UPDATE miqaat_users SET password_hash=${passwordHash}
+      WHERE id IN (SELECT user_id FROM token) RETURNING id
+    ), revoked AS (DELETE FROM miqaat_sessions WHERE user_id IN (SELECT id FROM updated)), consumed AS (SELECT id AS user_id FROM updated)
     SELECT user_id FROM consumed
   `;
   if (!rows.length) return false;
-  await database()`DELETE FROM miqaat_sessions WHERE user_id = ${rows[0]!.user_id as string}`;
   return true;
 }
 
 export function assertSameOrigin(request: NextRequest): void {
   const origin = request.headers.get("origin");
-  if (origin && origin !== new URL(request.url).origin) throw new Error("CROSS_ORIGIN");
+  if (origin !== new URL(request.url).origin) throw new Error("CROSS_ORIGIN");
 }

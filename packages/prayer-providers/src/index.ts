@@ -1,7 +1,6 @@
 import { Temporal } from "@js-temporal/polyfill";
-import { londonUnified2026 } from "./london-unified-2026";
 
-export type PrayerTimeSource = "coordinates" | "london-unified";
+export type PrayerTimeSource = "coordinates";
 
 export interface PrayerTimeRequest {
   fixtureId?: string;
@@ -190,82 +189,6 @@ function toInstant(date: Temporal.PlainDate, clock: string, timeZone: string): s
   }
 }
 
-/** Official annual London Unified timetable. Valid only for its published London coverage. */
-export class LondonUnifiedPrayerTimeProvider implements PrayerTimeProvider {
-  async getPrayerTimes(input: PrayerTimeRequest): Promise<PrayerTimes> {
-    const latitude = requireCoordinate(input.latitude, -90, 90);
-    const longitude = requireCoordinate(input.longitude, -180, 180);
-    const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-    const centralLatitude = toRadians(51.5074);
-    const latitudeDelta = toRadians(latitude - 51.5074);
-    const longitudeDelta = toRadians(longitude - -0.1278);
-    const haversine =
-      Math.sin(latitudeDelta / 2) ** 2 +
-      Math.cos(centralLatitude) * Math.cos(toRadians(latitude)) * Math.sin(longitudeDelta / 2) ** 2;
-    const distanceFromCentralLondonKilometres =
-      6_371 * 2 * Math.atan2(Math.sqrt(haversine), Math.sqrt(1 - haversine));
-    if (distanceFromCentralLondonKilometres > 40) {
-      throw new PrayerProviderError(
-        "INVALID_PROVIDER_INPUT",
-        "London Unified cannot be selected outside the London area.",
-      );
-    }
-    let serviceDate: Temporal.PlainDate;
-    try {
-      serviceDate = Temporal.PlainDate.from(input.serviceDate ?? "");
-    } catch {
-      throw new PrayerProviderError(
-        "INVALID_PROVIDER_INPUT",
-        "serviceDate must be a valid ISO date in YYYY-MM-DD format.",
-      );
-    }
-    if (input.timeZone !== "Europe/London") {
-      throw new PrayerProviderError(
-        "INVALID_PROVIDER_INPUT",
-        "London Unified is only available with the Europe/London timezone.",
-      );
-    }
-    if (serviceDate.year !== 2026) {
-      throw new PrayerProviderError(
-        "INVALID_PROVIDER_INPUT",
-        "London Unified timetable data is currently available for 2026 only.",
-      );
-    }
-
-    const followingDate = serviceDate.add({ days: 1 });
-    const day = londonUnified2026[serviceDate.toString().slice(5)];
-    const followingDay =
-      followingDate.year === 2026
-        ? londonUnified2026[followingDate.toString().slice(5)]
-        : undefined;
-    if (!day || !followingDay) {
-      throw new PrayerProviderError(
-        "INVALID_PROVIDER_INPUT",
-        "London Unified timetable does not cover the complete requested night.",
-      );
-    }
-    const [fajr, sunrise, dhuhr, asrStandard, asrHanafi, maghrib, isha] = day;
-    return {
-      maghrib: toInstant(serviceDate, maghrib, input.timeZone),
-      fajr: toInstant(followingDate, followingDay[0], input.timeZone),
-      timeZone: input.timeZone,
-      location: input.location ?? "London",
-      calculationMethod: "London Unified Prayer Timetable 2026",
-      source: "London Salah Timetable Unified Ulama Committee",
-      dailyPrayerTimes: {
-        serviceDate: serviceDate.toString(),
-        fajr,
-        sunrise,
-        dhuhr,
-        asrStandard,
-        asrHanafi,
-        maghrib,
-        isha,
-      },
-    };
-  }
-}
-
 /** AlAdhan adapter. The night engine remains unaware of this or any other provider. */
 export class AlAdhanPrayerTimeProvider implements PrayerTimeProvider {
   constructor(
@@ -316,8 +239,16 @@ export class AlAdhanPrayerTimeProvider implements PrayerTimeProvider {
           signal: AbortSignal.timeout(this.timeoutMilliseconds),
         });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as AlAdhanResponse;
-        if (body.code !== 200 || !body.data?.timings || !body.data.meta?.timezone) {
+        let body: AlAdhanResponse;
+        try {
+          body = await response.json();
+        } catch {
+          throw new PrayerProviderError(
+            "INVALID_PROVIDER_RESPONSE",
+            "AlAdhan returned an invalid response. Try again later.",
+          );
+        }
+        if (body?.code !== 200 || !body.data?.timings || !body.data.meta?.timezone) {
           throw new PrayerProviderError(
             "INVALID_PROVIDER_RESPONSE",
             "Prayer-time provider returned an incomplete response.",
@@ -328,7 +259,7 @@ export class AlAdhanPrayerTimeProvider implements PrayerTimeProvider {
         if (error instanceof PrayerProviderError) throw error;
         throw new PrayerProviderError(
           "PROVIDER_UNAVAILABLE",
-          "Prayer-time provider is temporarily unavailable.",
+          "AlAdhan prayer times are temporarily unavailable. Try again or enter trusted timetable times manually.",
         );
       }
     };

@@ -423,9 +423,9 @@ export function PrayerWorkspace({
   const [serviceDate, setServiceDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [method, setMethod] = useState(3);
   const [school, setSchool] = useState(0);
-  const [prayerTimeSource, setPrayerTimeSource] = useState<
-    "london-unified" | "aladhan" | "coordinates" | "manual"
-  >("london-unified");
+  const [prayerTimeSource, setPrayerTimeSource] = useState<"aladhan" | "coordinates" | "manual">(
+    "aladhan",
+  );
   const [latitude, setLatitude] = useState("51.5074");
   const [longitude, setLongitude] = useState("-0.1278");
   const [coordinateTimeZone, setCoordinateTimeZone] = useState("Europe/London");
@@ -478,6 +478,8 @@ export function PrayerWorkspace({
         const numericLatitude = Number(latitude);
         const numericLongitude = Number(longitude);
         if (
+          !latitude.trim() ||
+          !longitude.trim() ||
           !Number.isFinite(numericLatitude) ||
           numericLatitude < -90 ||
           numericLatitude > 90 ||
@@ -507,6 +509,7 @@ export function PrayerWorkspace({
           startDate: serviceDate,
           source: {
             kind: "coordinates",
+            provider: "aladhan",
             latitude: numericLatitude,
             longitude: numericLongitude,
             timeZone: coordinateTimeZone,
@@ -562,8 +565,8 @@ export function PrayerWorkspace({
         return;
       }
       const parameters = new URLSearchParams({
-        city: prayerTimeSource === "london-unified" ? "London" : city,
-        country: prayerTimeSource === "london-unified" ? "United Kingdom" : countryCode,
+        city: city,
+        country: countryCode,
         state,
         method: String(method),
         school: String(school),
@@ -588,43 +591,40 @@ export function PrayerWorkspace({
 
       const prayerTimes = body as LivePrayerTimes;
       // Provider output is passed unchanged into the existing calculation input.
-      const source: SyncSource =
-        prayerTimeSource === "london-unified"
-          ? { kind: "london-unified" }
-          : {
-              kind: "aladhan",
-              options: {
-                city,
-                country: countryCode,
-                state,
-                calculationMethod: method as Extract<
-                  SyncSource,
-                  { kind: "aladhan" }
-                >["options"]["calculationMethod"],
-                school: school as 0 | 1,
-                latitudeAdjustmentMethod: latitudeAdjustmentMethod as 1 | 2 | 3,
-                midnightMode: midnightMode as 0 | 1,
-                shafaq: shafaq as "general" | "ahmer" | "abyad",
-                tune: [...tune] as [
-                  number,
-                  number,
-                  number,
-                  number,
-                  number,
-                  number,
-                  number,
-                  number,
-                  number,
-                ],
-                ...(method === 99
-                  ? {
-                      methodSettings: customSettings.map((value) =>
-                        value.trim() ? Number(value) : null,
-                      ) as [number | null, number | null, number | null],
-                    }
-                  : {}),
-              },
-            };
+      const source: SyncSource = {
+        kind: "aladhan",
+        options: {
+          city,
+          country: countryCode,
+          state,
+          calculationMethod: method as Extract<
+            SyncSource,
+            { kind: "aladhan" }
+          >["options"]["calculationMethod"],
+          school: school as 0 | 1,
+          latitudeAdjustmentMethod: latitudeAdjustmentMethod as 1 | 2 | 3,
+          midnightMode: midnightMode as 0 | 1,
+          shafaq: shafaq as "general" | "ahmer" | "abyad",
+          tune: [...tune] as [
+            number,
+            number,
+            number,
+            number,
+            number,
+            number,
+            number,
+            number,
+            number,
+          ],
+          ...(method === 99
+            ? {
+                methodSettings: customSettings.map((value) =>
+                  value.trim() ? Number(value) : null,
+                ) as [number | null, number | null, number | null],
+              }
+            : {}),
+        },
+      };
       setSyncContext({ startDate: serviceDate, source });
       setProviderInfo(prayerTimes);
       setSubmitted({
@@ -719,13 +719,11 @@ export function PrayerWorkspace({
       </div>
 
       <p className="mb-7 inline-block border border-[#d0ae67]/30 bg-[#d0ae67]/5 px-4 py-2 text-sm font-semibold text-[#d0ae67]">
-        {prayerTimeSource === "london-unified"
-          ? "Published times · London Unified"
-          : prayerTimeSource === "aladhan"
-            ? "Live prayer times · AlAdhan"
-            : prayerTimeSource === "coordinates"
-              ? "Live prayer times · Precise coordinates"
-              : "Trusted timetable · Manual"}
+        {prayerTimeSource === "aladhan"
+          ? "Live prayer times · AlAdhan"
+          : prayerTimeSource === "coordinates"
+            ? "Live prayer times · AlAdhan coordinates"
+            : "Trusted timetable · Manual"}
       </p>
 
       <form
@@ -745,7 +743,7 @@ export function PrayerWorkspace({
                 setCity(location.city);
                 setState("");
               }
-              setPrayerTimeSource(nextLocation === "gb-london" ? "london-unified" : "aladhan");
+              setPrayerTimeSource("aladhan");
             }}
             className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
           >
@@ -773,15 +771,10 @@ export function PrayerWorkspace({
           <select
             value={prayerTimeSource}
             onChange={(event) =>
-              setPrayerTimeSource(
-                event.target.value as "london-unified" | "aladhan" | "coordinates" | "manual",
-              )
+              setPrayerTimeSource(event.target.value as "aladhan" | "coordinates" | "manual")
             }
             className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
           >
-            {locationId === "gb-london" && (
-              <option value="london-unified">London Unified Prayer Timetable</option>
-            )}
             <option value="aladhan">AlAdhan astronomical calculation</option>
             <option value="coordinates">Precise coordinates</option>
             <option value="manual">Trusted timetable / manual times</option>
@@ -1111,13 +1104,11 @@ export function PrayerWorkspace({
         </button>
       </form>
       <p className="mt-4 text-xs leading-5 text-[#8ea29d]">
-        {prayerTimeSource === "london-unified"
-          ? "Uses the published 2026 London Unified timetable for London within the M25. Standard jurisprudence uses Asr mithl 1. The night is calculated from published Maghrib to the following day’s published Fajr."
-          : prayerTimeSource === "aladhan"
-            ? "AlAdhan calculates today’s Maghrib and following Fajr astronomically. Choose the method used by your local authority; it is not interchangeable with a mosque-published timetable."
-            : prayerTimeSource === "coordinates"
-              ? "The server-side provider sources Maghrib and following Fajr for the supplied coordinates. Verify its calculation method against your local authority."
-              : "Enter Maghrib and the following day’s Fajr exactly as published by a trusted timetable. The engine performs arithmetic only and does not independently choose prayer times."}
+        {prayerTimeSource === "aladhan"
+          ? "AlAdhan calculates today’s Maghrib and following Fajr astronomically. Choose the method used by your local authority; it is not interchangeable with a mosque-published timetable."
+          : prayerTimeSource === "coordinates"
+            ? "AlAdhan uses your exact coordinates and selected timezone to source Maghrib and the following day’s Fajr. Verify the calculation method against your local authority."
+            : "Enter Maghrib and the following day’s Fajr exactly as published by a trusted timetable. The engine performs arithmetic only and does not independently choose prayer times."}
       </p>
       {providerInfo && (
         <div className="mt-5 border border-[#d0ae67]/30 bg-[#d0ae67]/5 p-4 text-sm">

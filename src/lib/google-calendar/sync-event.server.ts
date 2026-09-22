@@ -1,3 +1,4 @@
+import { calendarMutation } from "@/lib/calendar/mutation.server";
 import { createHash } from "node:crypto";
 import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
 import { GoogleCalendarError } from "./errors";
@@ -52,13 +53,21 @@ export async function syncGoogleEvent(
     Authorization: `Bearer ${session.accessToken}`,
     "Content-Type": "application/json",
   };
+  let beforeState: unknown = null;
   const call = (url: string, options: RequestInit = {}) =>
-    fetch(url, {
-      ...options,
-      headers: { ...headers, ...options.headers },
-      cache: "no-store",
-      signal: AbortSignal.timeout(6000),
-    });
+    options.method
+      ? calendarMutation(
+          session,
+          url,
+          { ...options, headers: { ...headers, ...options.headers } },
+          beforeState,
+        )
+      : fetch(url, {
+          ...options,
+          headers: { ...headers, ...options.headers },
+          cache: "no-store",
+          signal: AbortSignal.timeout(6000),
+        });
   let existing = await call(`${endpoint}/${id}`);
   let status: "created" | "updated" | "existing";
   if (existing.status === 404 && mapping.deletedAt)
@@ -87,6 +96,7 @@ export async function syncGoogleEvent(
   if (existing.status === 410) throw new GoogleCalendarError("EVENT_DELETED", 409);
   if (!existing.ok) throw await googleFailure(existing);
   const body = await existing.json();
+  beforeState = body;
   if (body.status === "cancelled") throw new GoogleCalendarError("EVENT_DELETED", 409);
   const properties = body.extendedProperties?.private;
   if (!googleOwnershipAdapter.verifyOwnership(body, mapping))

@@ -6,6 +6,8 @@ import { GoogleCalendarError } from "./errors";
  * after the calendar ownership migration.
  */
 export function assertCalendarMutationsEnabled() {
+  if (process.env.CALENDAR_WRITES_ENABLED !== "true")
+    throw new GoogleCalendarError("CALENDAR_WRITES_DISABLED", 503);
   if (process.env.CALENDAR_MUTATIONS_PAUSED === "true")
     throw new GoogleCalendarError("CALENDAR_MAINTENANCE", 503);
 }

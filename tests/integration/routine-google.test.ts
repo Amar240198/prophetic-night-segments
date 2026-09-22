@@ -26,6 +26,10 @@ beforeAll(async () => {
     "004_calendar_ownership",
     "005_miqaat_accounts",
     "006_miqaat_automation",
+    "008_calendar_intelligence",
+    "009_remove_london_unified",
+    "010_product_consolidation",
+    "011_stripe_billing",
   ])
     await db.exec(readFileSync(`migrations/${file}.sql`, "utf8"));
 }, 60000);
@@ -77,8 +81,16 @@ beforeEach(async () => {
     "INSERT INTO google_connections (id, google_subject, google_account_email, encrypted_access_token, access_token_expires_at, user_id) VALUES ($1,$2,'test@example.invalid','encrypted',now()+interval '1 hour',$3)",
     [connectionId, session.subject, userId],
   );
+  await db.exec(
+    "UPDATE google_connections SET management_enabled=true, granted_scopes='https://www.googleapis.com/auth/calendar.events'",
+  );
+  vi.stubEnv("CALENDAR_WRITES_ENABLED", "true");
   vi.stubEnv("DATABASE_URL", "postgresql://test-only");
   vi.stubEnv("GOOGLE_SESSION_SECRET", Buffer.alloc(32, 7).toString("base64"));
+  await db.query(
+    "INSERT INTO miqaat_entitlements(user_id,plan,status,provider_subscription_id,current_period_end) VALUES ($1,'PRO','active','sub_test',now()+interval '30 days')",
+    [userId],
+  );
   provider.clear();
   writes = [];
   vi.stubGlobal(
@@ -172,23 +184,19 @@ it("repairs mutable provider drift despite an unchanged payload hash", async () 
   expect(provider.get(id)?.summary).toBe(routine.name);
 });
 
-it("starts exactly one seven-day trial and expiry preserves owned calendar events", async () => {
-  await db.query("INSERT INTO miqaat_entitlements (user_id) VALUES ($1)", [userId]);
-  const initial = await startAutomationTrial(userId);
-  expect(initial.allowed).toBe(true);
-  const repeat = await startAutomationTrial(userId);
-  expect(repeat.trial_started_at).toEqual(initial.trial_started_at);
-  expect(
-    new Date(initial.trial_ends_at).getTime() - new Date(initial.trial_started_at).getTime(),
-  ).toBe(7 * 24 * 60 * 60 * 1000);
+it("never grants a new trial and preserves events when existing paid access expires", async () => {
   await reconcileGoogleSchedule(session, [occurrence("16:05")], scope);
   await db.query(
-    "UPDATE miqaat_entitlements SET trial_started_at=now()-interval '8 days',trial_ends_at=now()-interval '1 day' WHERE user_id=$1",
+    "UPDATE miqaat_entitlements SET current_period_end=now()-interval '1 day' WHERE user_id=$1",
     [userId],
   );
   expect((await automationEntitlement(userId)).allowed).toBe(false);
   expect((await startAutomationTrial(userId)).allowed).toBe(false);
   expect(provider.size).toBe(1);
+  expect(
+    (await db.query("SELECT trial_started_at FROM miqaat_entitlements WHERE user_id=$1", [userId]))
+      .rows[0],
+  ).toEqual({ trial_started_at: null });
 });
 it("preserves overlap across horizon expansion and contraction without implicit removals", async () => {
   const first = occurrence("16:05");

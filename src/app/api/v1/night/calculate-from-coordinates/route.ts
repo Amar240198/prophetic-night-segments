@@ -3,18 +3,17 @@ import type {
   CoordinateNightCalculationInput,
   NightCalculationInput,
 } from "@prophetic-night/night-engine";
-import {
-  IslamicAppPrayerTimeProvider,
-  PrayerProviderError,
-} from "@prophetic-night/prayer-providers";
+import { AlAdhanPrayerTimeProvider, PrayerProviderError } from "@prophetic-night/prayer-providers";
 import { NextResponse } from "next/server";
-
-const provider = new IslamicAppPrayerTimeProvider();
 
 function validInput(
   input: Partial<CoordinateNightCalculationInput>,
 ): input is CoordinateNightCalculationInput {
   return (
+    !!input &&
+    typeof input === "object" &&
+    !Array.isArray(input) &&
+    (input.prayerTimeSource === undefined || input.prayerTimeSource === "coordinates") &&
     Number.isFinite(input.latitude) &&
     input.latitude! >= -90 &&
     input.latitude! <= 90 &&
@@ -30,7 +29,21 @@ function validInput(
 
 export async function POST(request: Request) {
   try {
-    const input = (await request.json()) as Partial<CoordinateNightCalculationInput>;
+    let input: Partial<CoordinateNightCalculationInput>;
+    try {
+      input = await request.json();
+    } catch {
+      return NextResponse.json(
+        {
+          error: {
+            code: "INVALID_REQUEST",
+            message: "Request body must be valid JSON.",
+            details: {},
+          },
+        },
+        { status: 400 },
+      );
+    }
     if (!validInput(input)) {
       return NextResponse.json(
         {
@@ -43,7 +56,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    const prayerTimes = await provider.getPrayerTimes(input);
+    const prayerTimes = await new AlAdhanPrayerTimeProvider().getPrayerTimes(input);
     const calculationInput: NightCalculationInput = {
       maghrib: prayerTimes.maghrib,
       fajr: prayerTimes.fajr,
@@ -87,12 +100,12 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: {
-          code: "INVALID_REQUEST",
-          message: "Request body must be valid JSON.",
+          code: "INTERNAL_ERROR",
+          message: "The calculation could not be completed. Please try again.",
           details: {},
         },
       },
-      { status: 400 },
+      { status: 500 },
     );
   }
 }

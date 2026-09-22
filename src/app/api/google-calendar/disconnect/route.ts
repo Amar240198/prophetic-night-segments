@@ -1,3 +1,5 @@
+import { readAppUserFromRequest } from "@/lib/auth/session.server";
+import { GoogleCalendarError } from "@/lib/google-calendar/errors";
 import { NextRequest } from "next/server";
 import {
   assertSameOrigin,
@@ -11,12 +13,17 @@ import {
 } from "@/lib/google-calendar/session.server";
 import { deleteConnection, deleteSession } from "@/lib/google-calendar/database.server";
 import { decryptToken } from "@/lib/google-calendar/tokens.server";
-import { assertCalendarMutationsEnabled } from "@/lib/google-calendar/maintenance.server";
 export const runtime = "nodejs";
 export async function POST(request: NextRequest) {
   try {
-    assertCalendarMutationsEnabled();
     assertSameOrigin(request);
+    const user = await readAppUserFromRequest(request);
+    if (!user) throw new GoogleCalendarError("UNAUTHENTICATED", 401);
+    if (sessionId(request)) {
+      const { findSession } = await import("@/lib/google-calendar/database.server");
+      const row = await findSession(sessionHash(sessionId(request)!), user.id);
+      if (!row) throw new GoogleCalendarError("FORBIDDEN", 403);
+    }
   } catch (error) {
     return errorResponse(error);
   }

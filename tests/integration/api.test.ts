@@ -14,28 +14,6 @@ const app = await buildApp({
       };
     },
   },
-  londonUnifiedPrayerTimeProvider: {
-    async getPrayerTimes() {
-      return {
-        maghrib: "2026-07-23T20:04:00Z",
-        fajr: "2026-07-24T02:21:00Z",
-        timeZone: "Europe/London",
-        location: "London",
-        calculationMethod: "London Unified Prayer Timetable 2026",
-        source: "London Unified test provider",
-        dailyPrayerTimes: {
-          serviceDate: "2026-07-23",
-          fajr: "03:19",
-          sunrise: "05:11",
-          dhuhr: "13:12",
-          asrStandard: "17:22",
-          asrHanafi: "18:32",
-          maghrib: "21:04",
-          isha: "22:21",
-        },
-      };
-    },
-  },
 });
 
 beforeAll(() => app.ready());
@@ -122,7 +100,7 @@ describe("REST API", () => {
     expect(response.json().error.code).toBe("INVALID_REQUEST");
   });
 
-  it("selects London Unified explicitly and returns the published prayer day", async () => {
+  it("rejects the removed London Unified source", async () => {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/night/calculate-from-coordinates",
@@ -134,17 +112,8 @@ describe("REST API", () => {
         prayerTimeSource: "london-unified",
       },
     });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().prayerTimes).toEqual(
-      expect.objectContaining({
-        provider: "London Unified test provider",
-        calculationMethod: "London Unified Prayer Timetable 2026",
-        dailyPrayerTimes: expect.objectContaining({
-          asrStandard: "17:22",
-          maghrib: "21:04",
-        }),
-      }),
-    );
+    expect(response.statusCode).toBe(400);
+    expect(response.json().error.code).toBe("INVALID_REQUEST");
   });
 
   it("serves example, OpenAPI JSON, docs, and CORS", async () => {

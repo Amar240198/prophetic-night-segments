@@ -10,10 +10,10 @@ vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams(),
 }));
 import { AppShell } from "@/components/app/AppShell";
-import { PrayerWorkspace } from "@/components/app/PrayerWorkspace";
+import { ProductProvider } from "@/components/product/ProductContext";
 import { TodayPage } from "@/components/app/TodayPage";
 import { CalendarPage } from "@/components/app/CalendarPage";
-import { AccountPage } from "@/components/app/AccountPage";
+import { AccountPage } from "@/components/product/AccountPage";
 import { FastingCard } from "@/components/FastingCard";
 import { RoutinesCard } from "@/components/RoutinesCard";
 it("renders authenticated module layouts for responsive inspection", () => {
@@ -22,19 +22,13 @@ it("renders authenticated module layouts for responsive inspection", () => {
   for (const [name, content] of [
     ["today", <TodayPage key="TodayPage" />],
     ["calendar", <CalendarPage key="CalendarPage" />],
-    [
-      "account",
-      <AccountPage
-        key="AccountPage"
-        user={{ id: "test", email: "layout@example.com", plan: "FREE" }}
-      />,
-    ],
+    ["account", <AccountPage key="AccountPage" />],
     ["fasting", <FastingCard key="FastingCard" date="2026-09-18" />],
     ["routines", <RoutinesCard key="RoutinesCard" />],
   ] as const) {
     const html = renderToStaticMarkup(
       <AppShell plan="FREE">
-        <PrayerWorkspace>{content}</PrayerWorkspace>
+        <ProductProvider>{content}</ProductProvider>
       </AppShell>,
     );
     expect(html).toContain('id="main-content"');

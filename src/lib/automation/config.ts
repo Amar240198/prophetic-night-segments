@@ -10,12 +10,17 @@ export interface AutomationConfig {
   selectedPrayers: Array<"fajr" | "dhuhr" | "asr" | "maghrib" | "isha">;
   personalAnchors: { bedtime?: string; wake_time?: string; jumuah?: string };
   fasting: FastingProgramme[];
+  fastingAnchor?: { date: string; fasting: boolean };
+  qiyamWindow?: "last-third" | "final-sixth";
   night: "boundaries" | "dawud";
   onboardingComplete: boolean;
   removeObsolete: boolean;
 }
 export const DEFAULT_AUTOMATION: AutomationConfig = {
-  source: { kind: "london-unified" },
+  source: {
+    kind: "aladhan",
+    options: { city: "London", country: "United Kingdom", calculationMethod: 3, school: 0 },
+  },
   timezone: "Europe/London",
   horizon: 30,
   calendarId: "primary",
@@ -67,7 +72,18 @@ export function validateAutomationConfig(
       personalAnchors[key] = clock;
     }
   }
+  let fastingAnchor: AutomationConfig["fastingAnchor"];
+  if (input.fastingAnchor !== undefined) {
+    Temporal.PlainDate.from(input.fastingAnchor.date);
+    if (typeof input.fastingAnchor.fasting !== "boolean") throw new Error("INVALID_AUTOMATION");
+    fastingAnchor = { date: input.fastingAnchor.date, fasting: input.fastingAnchor.fasting };
+  }
+  if (input.fasting.includes("dawud") && !fastingAnchor) throw new Error("INVALID_AUTOMATION");
+  if (input.qiyamWindow !== undefined && !["last-third", "final-sixth"].includes(input.qiyamWindow))
+    throw new Error("INVALID_AUTOMATION");
   return {
+    ...(fastingAnchor ? { fastingAnchor } : {}),
+    ...(input.qiyamWindow ? { qiyamWindow: input.qiyamWindow } : {}),
     source: validateSource(input.source),
     timezone: input.timezone,
     horizon: input.horizon,
@@ -75,7 +91,7 @@ export function validateAutomationConfig(
     modules: list(input.modules, ["prayers", "routines", "night", "fasting"]),
     selectedPrayers: list(input.selectedPrayers, ["fajr", "dhuhr", "asr", "maghrib", "isha"]),
     personalAnchors,
-    fasting: list(input.fasting, ["monday", "thursday", "white-days"]),
+    fasting: list(input.fasting, ["monday", "thursday", "white-days", "dawud"]),
     night: input.night,
     onboardingComplete: input.onboardingComplete,
     removeObsolete: input.removeObsolete === true,

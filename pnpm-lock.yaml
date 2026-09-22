@@ -25,12 +25,18 @@ importers:
       next:
         specifier: 16.2.11
         version: 16.2.11(@babel/core@7.29.7(supports-color@7.2.0))(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      nodemailer:
+        specifier: ^10.0.10
+        version: 10.0.10
       react:
         specifier: 19.2.4
         version: 19.2.4
       react-dom:
         specifier: 19.2.4
         version: 19.2.4(react@19.2.4)
+      stripe:
+        specifier: ^22.6.2
+        version: 22.6.2(@types/node@20.19.43)
     devDependencies:
       "@electric-sql/pglite":
         specifier: ^0.5.8
@@ -50,6 +56,9 @@ importers:
       "@types/node":
         specifier: ^20
         version: 20.19.43
+      "@types/nodemailer":
+        specifier: ^8.0.2
+        version: 8.0.2
       "@types/react":
         specifier: ^19
         version: 19.2.17
@@ -1631,6 +1640,12 @@ packages:
     resolution:
       {
         integrity: sha512-6oYBAi5ikg4Pl+kGsoYtawUMBT2zZMCvPNF7pVLnHZfd1zf38DRiWn/gT01RYCdUqkv7Fhr+C9ot4/tb+2sVvA==,
+      }
+
+  "@types/nodemailer@8.0.2":
+    resolution:
+      {
+        integrity: sha512-c7M5ox8p0nEOfbJ2E9Qcmt8/QCu/VzsiAhzBiZbvky2PhKZDHpKB3sQHBM5MEZNkCfBOaS6S9//AGPRTNB7IaA==,
       }
 
   "@types/react-dom@19.2.3":
@@ -3921,6 +3936,13 @@ packages:
       }
     engines: { node: ">=18" }
 
+  nodemailer@10.0.10:
+    resolution:
+      {
+        integrity: sha512-He9XskOFms62SyAKkLu8CcGcYHAo+BSHSsORI8s4PJH8qZgZY4L4lDfvyN0twvmbpyG+eGrxpyBlskj9d9rJ8A==,
+      }
+    engines: { node: ">=20.0.0" }
+
   nwsapi@2.2.24:
     resolution:
       {
@@ -4613,6 +4635,18 @@ packages:
       {
         integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==,
       }
+
+  stripe@22.6.2:
+    resolution:
+      {
+        integrity: sha512-PwRE2scocvXqDKPiskMa5vRJEAEkq46W69XyUYmAwrNSLr675lQnfqLwnsndAWizwgihOWw/irLmoFRo3ez7ew==,
+      }
+    engines: { node: ">=18" }
+    peerDependencies:
+      "@types/node": ">=18"
+    peerDependenciesMeta:
+      "@types/node":
+        optional: true
 
   styled-jsx@5.1.6:
     resolution:
@@ -5858,6 +5892,10 @@ snapshots:
   "@types/node@20.19.43":
     dependencies:
       undici-types: 6.21.0
+
+  "@types/nodemailer@8.0.2":
+    dependencies:
+      "@types/node": 20.19.43
 
   "@types/react-dom@19.2.3(@types/react@19.2.17)":
     dependencies:
@@ -7375,6 +7413,8 @@ snapshots:
 
   node-releases@2.0.51: {}
 
+  nodemailer@10.0.10: {}
+
   nwsapi@2.2.24: {}
 
   object-assign@4.1.1: {}
@@ -7853,6 +7893,10 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
+
+  stripe@22.6.2(@types/node@20.19.43):
+    optionalDependencies:
+      "@types/node": 20.19.43
 
   styled-jsx@5.1.6(@babel/core@7.29.7(supports-color@7.2.0))(react@19.2.4):
     dependencies:

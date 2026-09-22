@@ -1,3 +1,4 @@
+import { calendarMutation } from "@/lib/calendar/mutation.server";
 import { GoogleCalendarError } from "./errors";
 import { googleFailure } from "./events.server";
 import { googleOwnershipAdapter } from "./ownership.server";
@@ -18,20 +19,32 @@ export async function removeGoogleEvent(
   )
     throw new GoogleCalendarError("EVENT_NOT_OWNED", 409);
   const endpoint = `https://www.googleapis.com/calendar/v3/calendars/${encodeURIComponent(mapping.calendarId)}/events/${encodeURIComponent(mapping.providerEventId)}`;
+  let beforeState: unknown = null;
   const call = (method: "GET" | "DELETE", etag?: string) =>
-    fetch(`${endpoint}${method === "DELETE" ? "?sendUpdates=none" : ""}`, {
-      method,
-      headers: {
-        Authorization: `Bearer ${session.accessToken}`,
-        ...(etag ? { "If-Match": etag } : {}),
-      },
-      cache: "no-store",
-      signal: AbortSignal.timeout(6000),
-    });
+    method === "DELETE"
+      ? calendarMutation(
+          session,
+          `${endpoint}?sendUpdates=none`,
+          {
+            method,
+            headers: { "If-Match": etag! },
+          },
+          beforeState,
+        )
+      : fetch(endpoint, {
+          method,
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+            ...(etag ? { "If-Match": etag } : {}),
+          },
+          cache: "no-store",
+          signal: AbortSignal.timeout(6000),
+        });
   const existing = await call("GET");
   if ([404, 410].includes(existing.status)) return "absent";
   if (!existing.ok) throw await googleFailure(existing);
   const body = await existing.json();
+  beforeState = body;
   if (body.status === "cancelled") return "absent";
   if (!googleOwnershipAdapter.verifyOwnership(body, mapping))
     throw new GoogleCalendarError("EVENT_NOT_OWNED", 409);

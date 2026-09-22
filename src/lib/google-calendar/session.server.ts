@@ -7,7 +7,8 @@ import { decryptToken, encryptToken } from "./tokens.server";
 
 export const SESSION_COOKIE = "pns_google_session";
 export const FLOW_COOKIE = "pns_google_oauth";
-export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.events.owned";
+export const CALENDAR_SCOPE = "https://www.googleapis.com/auth/calendar.readonly";
+export const WRITE_SCOPE = "https://www.googleapis.com/auth/calendar.events";
 export const EMAIL_SCOPE = "https://www.googleapis.com/auth/userinfo.email";
 export interface GoogleSession {
   /** Internal lease fencing token, never accepted from the browser. */
@@ -23,9 +24,13 @@ export interface OAuthFlow {
   state: string;
   verifier: string;
   expiresAt: number;
+  userId?: string;
+  management?: boolean;
 }
 
 export function googleConfig() {
+  if (process.env.GOOGLE_CALENDAR_ENABLED === "false")
+    throw new GoogleCalendarError("NOT_CONFIGURED", 503);
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
   const redirectUri = process.env.GOOGLE_OAUTH_REDIRECT_URI;
@@ -104,6 +109,12 @@ export function sessionId(request: NextRequest): string | null {
 }
 
 export async function readSession(request: NextRequest, userId?: string): Promise<GoogleSession> {
+  if (!userId) {
+    const { readAppUserFromRequest } = await import("@/lib/auth/session.server");
+    const user = await readAppUserFromRequest(request);
+    if (!user) throw new GoogleCalendarError("UNAUTHENTICATED", 401);
+    userId = user.id;
+  }
   const raw = sessionId(request);
   if (!request.cookies.get(SESSION_COOKIE)?.value)
     throw new GoogleCalendarError("UNAUTHENTICATED", 401);
@@ -156,7 +167,16 @@ async function readStoredSession(
           !token.refresh_token ||
           token.refresh_token.length > 4096)) ||
       (token.scope !== undefined &&
-        (typeof token.scope !== "string" || !token.scope.split(" ").includes(CALENDAR_SCOPE)))
+        (typeof token.scope !== "string" ||
+          !token.scope
+            .split(" ")
+            .some((scope: string) =>
+              [
+                CALENDAR_SCOPE,
+                WRITE_SCOPE,
+                "https://www.googleapis.com/auth/calendar.events.owned",
+              ].includes(scope),
+            )))
     )
       throw new GoogleCalendarError("CONNECTION_FAILED", 502);
     await updateTokens(

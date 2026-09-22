@@ -38,6 +38,7 @@ export type AlAdhanSchool = keyof typeof ALADHAN_SCHOOLS;
 export interface FetchAlAdhanPrayerTimesOptions {
   city: string;
   country: string;
+  coordinates?: { latitude: number; longitude: number; timeZone: string };
   state?: string;
   /** Gregorian service date in YYYY-MM-DD format. */
   date: string;
@@ -220,10 +221,23 @@ function toApiDate(date: Temporal.PlainDate): string {
 }
 
 function validateOptions(options: FetchAlAdhanPrayerTimesOptions): void {
-  if (!options.city.trim() || options.city.length > 100)
+  if (!options.coordinates && (!options.city.trim() || options.city.length > 100))
     throw new Error("City must be between 1 and 100 characters");
-  if (!options.country.trim() || options.country.length > 100)
+  if (!options.coordinates && (!options.country.trim() || options.country.length > 100))
     throw new Error("Country must be between 1 and 100 characters");
+  if (options.coordinates) {
+    const { latitude, longitude, timeZone } = options.coordinates;
+    if (
+      !Number.isFinite(latitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      !Number.isFinite(longitude) ||
+      longitude < -180 ||
+      longitude > 180
+    )
+      throw new Error("Invalid coordinates");
+    Temporal.Instant.fromEpochMilliseconds(0).toZonedDateTimeISO(timeZone);
+  }
   if (options.state !== undefined && options.state.length > 100)
     throw new Error("State must not exceed 100 characters");
   if (!(options.calculationMethod in ALADHAN_CALCULATION_METHODS))
@@ -285,9 +299,18 @@ async function fetchDay(
   options: FetchAlAdhanPrayerTimesOptions,
   date: Temporal.PlainDate,
 ): Promise<AlAdhanDay> {
-  const url = new URL(`${BASE_URL}/${toApiDate(date)}`);
-  url.searchParams.set("city", options.city.trim());
-  url.searchParams.set("country", options.country.trim());
+  const url = new URL(
+    `${options.coordinates ? BASE_URL.replace("timingsByCity", "timings") : BASE_URL}/${toApiDate(date)}`,
+  );
+  if (options.coordinates) {
+    url.searchParams.set("latitude", String(options.coordinates.latitude));
+    url.searchParams.set("longitude", String(options.coordinates.longitude));
+    url.searchParams.set("timezonestring", options.coordinates.timeZone);
+  }
+  if (!options.coordinates) {
+    url.searchParams.set("city", options.city.trim());
+    url.searchParams.set("country", options.country.trim());
+  }
   if (options.state?.trim()) url.searchParams.set("state", options.state.trim());
   url.searchParams.set("method", String(options.calculationMethod));
   url.searchParams.set("school", String(options.school));
@@ -329,7 +352,15 @@ async function fetchDay(
       } catch {
         throw new Error(`AlAdhan returned malformed JSON for ${date}`);
       }
-      return parseResponse(body);
+      const parsed = parseResponse(body);
+      if (options.coordinates && parsed.meta.timezone !== options.coordinates.timeZone)
+        throw new Error("AlAdhan returned an unexpected timezone");
+      if (
+        parsed.date.gregorian.date !==
+        `${String(date.day).padStart(2, "0")}-${String(date.month).padStart(2, "0")}-${date.year}`
+      )
+        throw new Error("AlAdhan returned an unexpected date");
+      return parsed;
     } catch (error) {
       const aborted = controller.signal.aborted;
       const networkFailure = error instanceof TypeError;

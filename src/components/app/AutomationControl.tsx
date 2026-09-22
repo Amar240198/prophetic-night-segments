@@ -2,6 +2,10 @@
 import { useEffect, useState } from "react";
 import { DEFAULT_AUTOMATION, type AutomationConfig } from "@/lib/automation/config";
 import type { CalendarEvent } from "@/lib/calendar/buildCalendarEvents";
+import {
+  ALADHAN_CALCULATION_METHODS,
+  type AlAdhanCalculationMethod,
+} from "@/lib/providers/aladhan";
 import { Card } from "./ui";
 export function AutomationControl() {
   const [config, setConfig] = useState<AutomationConfig>(DEFAULT_AUTOMATION);
@@ -23,6 +27,10 @@ export function AutomationControl() {
         if (!body.config?.source) throw new Error("Automation settings could not be loaded.");
         if (!active) return;
         setConfig(body.config);
+        if (body.state?.last_error_code === "PRAYER_SOURCE_REMOVED")
+          setMessage(
+            "The London Unified timetable was removed. Automation is paused. Review your location and calculation method before enabling it again.",
+          );
         setCustomHorizon(String(body.config.horizon === "continuous" ? 30 : body.config.horizon));
         setRevision(body.state?.revision ?? null);
         setStatus(body.state ?? {});
@@ -125,10 +133,11 @@ export function AutomationControl() {
                 setConfig({
                   ...config,
                   source:
-                    e.target.value === "london-unified"
-                      ? { kind: "london-unified" }
+                    e.target.value === "aladhan"
+                      ? DEFAULT_AUTOMATION.source
                       : {
                           kind: "coordinates",
+                          provider: "aladhan",
                           latitude: 51.5074,
                           longitude: -0.1278,
                           timeZone: config.timezone,
@@ -137,10 +146,83 @@ export function AutomationControl() {
                 })
               }
             >
-              <option value="london-unified">Published London Unified timetable</option>
+              <option value="aladhan">AlAdhan city calculation</option>
               <option value="coordinates">Coordinates provider</option>
             </select>
           </label>
+          {config.source.kind === "aladhan" && (
+            <>
+              {(["city", "country"] as const).map((field) => (
+                <label key={field}>
+                  {field === "city" ? "City" : "Country"}
+                  <input
+                    required
+                    maxLength={100}
+                    value={config.source.kind === "aladhan" ? config.source.options[field] : ""}
+                    onChange={(e) => {
+                      if (config.source.kind === "aladhan")
+                        setConfig({
+                          ...config,
+                          source: {
+                            ...config.source,
+                            options: { ...config.source.options, [field]: e.target.value },
+                          },
+                        });
+                    }}
+                  />
+                </label>
+              ))}
+              <label>
+                Calculation method
+                <select
+                  value={config.source.options.calculationMethod}
+                  onChange={(e) => {
+                    if (config.source.kind === "aladhan")
+                      setConfig({
+                        ...config,
+                        source: {
+                          ...config.source,
+                          options: {
+                            ...config.source.options,
+                            calculationMethod: Number(e.target.value) as AlAdhanCalculationMethod,
+                          },
+                        },
+                      });
+                  }}
+                >
+                  {Object.entries(ALADHAN_CALCULATION_METHODS)
+                    .filter(([id]) => id !== "99")
+                    .map(([id, name]) => (
+                      <option key={id} value={id}>
+                        {name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <label>
+                Juristic school
+                <select
+                  value={config.source.options.school}
+                  onChange={(e) => {
+                    if (config.source.kind === "aladhan")
+                      setConfig({
+                        ...config,
+                        source: {
+                          ...config.source,
+                          options: {
+                            ...config.source.options,
+                            school: Number(e.target.value) as 0 | 1,
+                          },
+                        },
+                      });
+                  }}
+                >
+                  <option value="0">Standard</option>
+                  <option value="1">Hanafi</option>
+                </select>
+              </label>
+            </>
+          )}
           {config.source.kind === "coordinates" && (
             <>
               <label>

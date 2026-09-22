@@ -1,3 +1,6 @@
+import { requireFeature } from "@/lib/product/entitlements.server";
+import { assertCalendarMutationsEnabled } from "./maintenance.server";
+import { WRITE_SCOPE } from "./session.server";
 import { database } from "./database.server";
 import type { SyncPreference, SyncRequest, SyncSelection } from "./sync";
 import type { GoogleEventId } from "./plan";
@@ -5,15 +8,18 @@ import { GoogleCalendarError } from "./errors";
 import type { GoogleSession } from "./session.server";
 
 export async function assertCalendarWriteAccess(session: GoogleSession) {
-  const rows = await database()`SELECT id FROM google_connections
+  assertCalendarMutationsEnabled();
+  const rows = await database()`SELECT id, user_id FROM google_connections
     WHERE id = ${session.connectionId} AND provider = 'google'
       AND google_subject = ${session.subject} AND disconnected_at IS NULL
+      AND management_enabled = true AND ${WRITE_SCOPE} = ANY(string_to_array(granted_scopes, ' '))
       AND encrypted_access_token IS NOT NULL
       AND (${session.operationOwner ?? null}::uuid IS NULL OR EXISTS (
         SELECT 1 FROM google_calendar_sync_leases WHERE google_connection_id = ${session.connectionId}
           AND owner = ${session.operationOwner ?? null}::uuid
           AND expires_at > now() + interval '15 seconds'))`;
-  if (rows.length !== 1) throw new GoogleCalendarError("SESSION_EXPIRED", 401);
+  if (rows.length !== 1 || !rows[0]!.user_id) throw new GoogleCalendarError("SESSION_EXPIRED", 401);
+  await requireFeature(String(rows[0]!.user_id), "calendar-write");
 }
 
 export async function readSyncSelection(connection: string): Promise<SyncSelection> {

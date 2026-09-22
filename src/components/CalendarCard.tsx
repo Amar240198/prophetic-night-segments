@@ -1,11 +1,10 @@
 "use client";
 
 import type { SyncContext } from "@/lib/google-calendar/sync";
-import { Temporal } from "@js-temporal/polyfill";
+import Link from "next/link";
+import { generateICS } from "@/lib/calendar/generateICS";
+import { assignExportIdentities } from "@/lib/calendar/exportIdentity";
 import { useState } from "react";
-import { GoogleCalendarSection } from "./GoogleCalendarSection";
-import { DEFAULT_BUFFER_BEFORE_FAJR_MINUTES } from "./ScheduleTools";
-import { buildGooglePlan } from "@/lib/google-calendar/plan";
 import type { NightCalculationResult } from "@prophetic-night/night-engine";
 import { buildCalendarEvents, formatCalendarTime } from "@/lib/calendar/buildCalendarEvents";
 
@@ -15,7 +14,6 @@ export function CalendarCard({
   prayerSource,
   firstAdhanMinutes = null,
   wakeBufferMinutes = 0,
-  syncContext,
 }: {
   result: NightCalculationResult;
   dawudSelected: boolean;
@@ -25,6 +23,7 @@ export function CalendarCard({
   syncContext?: SyncContext | null;
 }) {
   const [selected, setSelected] = useState(["wake", "buffer-before-fajr", "last-third", "fajr"]);
+  const [exportError, setExportError] = useState("");
   const minutes = firstAdhanMinutes ?? wakeBufferMinutes;
   const valid = Number.isInteger(minutes) && minutes >= 0 && minutes <= 1440;
   const events = buildCalendarEvents(result, {
@@ -79,30 +78,36 @@ export function CalendarCard({
           </label>
         ))}
       </fieldset>
-      <p className="mt-4 text-sm text-[#9baca7]">
-        Use the connected Google integration below for managed calendar updates and removal.
-      </p>
-      <GoogleCalendarSection
-        valid={valid}
-        localNight={Temporal.Instant.from(result.night.start)
-          .toZonedDateTimeISO(result.input.timeZone)
-          .toPlainDate()
-          .toString()}
-        syncContext={syncContext}
-        syncOptions={{
-          wakeBufferMinutes: valid ? minutes : 0,
-          dawudSelected,
-          fajrPreparationMinutes: DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
-          firstAdhanMinutes,
+      <button
+        className="primary-button"
+        disabled={!valid || !selected.length}
+        onClick={async () => {
+          try {
+            const identified = await assignExportIdentities(
+              events.filter((event) => selected.includes(event.id)),
+            );
+            const url = URL.createObjectURL(
+              new Blob([generateICS(identified, new Date().toISOString())], {
+                type: "text/calendar;charset=utf-8",
+              }),
+            );
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = "sixth-of-the-night.ics";
+            link.click();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+          } catch {
+            setExportError("Calendar export could not be prepared. Try again.");
+          }
         }}
-        events={buildGooglePlan(result, {
-          wakeBufferMinutes: valid ? minutes : 0,
-          dawudSelected,
-          prayerSource,
-          fajrPreparationMinutes: DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
-          firstAdhanMinutes,
-        })}
-      />
+      >
+        Download calendar file
+      </button>
+      {exportError && <p role="alert">{exportError}</p>}
+      <p className="mt-4">Want this to stay aligned with your calendar?</p>
+      <Link className="secondary-button" href="/app">
+        Use Miqāt
+      </Link>
       <p className="mt-4 text-xs leading-5 text-[#8ea29d]">
         One-night export for Apple Calendar, Google Calendar, Outlook and other .ics applications.
         Set notifications in your calendar app. Recalculate and export again if prayer times change.

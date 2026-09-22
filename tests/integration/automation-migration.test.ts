@@ -57,3 +57,54 @@ it("applies migration 006 transactionally and preserves account data", async () 
     .catch((error: Error) => error);
   expect(invalid).toBeInstanceOf(Error);
 });
+
+it("pauses static timetable automation and preserves unrelated configuration", async () => {
+  const user = await db.query<{ id: string }>("SELECT id FROM miqaat_users LIMIT 1");
+  const id = user.rows[0]!.id;
+  await db.query("INSERT INTO miqaat_preferences (user_id) VALUES ($1)", [id]);
+  await db.query(
+    "INSERT INTO miqaat_automation (user_id,enabled,configuration) VALUES ($1,true,$2::jsonb)",
+    [
+      id,
+      JSON.stringify({
+        source: { kind: "london-unified" },
+        horizon: 60,
+        modules: ["prayers"],
+        onboardingComplete: true,
+      }),
+    ],
+  );
+  await db.exec(readFileSync("migrations/007_miqaat_password_resets.sql", "utf8"));
+  await db.exec(readFileSync("migrations/008_calendar_intelligence.sql", "utf8"));
+  await db.exec(readFileSync("migrations/009_remove_london_unified.sql", "utf8"));
+  const result = await db.query(
+    "SELECT enabled, configuration, last_error_code, revision FROM miqaat_automation WHERE user_id=$1",
+    [id],
+  );
+  expect(result.rows[0]).toMatchObject({
+    enabled: false,
+    last_error_code: "PRAYER_SOURCE_REMOVED",
+    configuration: {
+      source: { kind: "london-unified" },
+      horizon: 60,
+      modules: ["prayers"],
+      onboardingComplete: false,
+    },
+  });
+  expect(
+    (await db.query("SELECT prayer_source FROM miqaat_preferences WHERE user_id=$1", [id])).rows[0],
+  ).toEqual({ prayer_source: "london-unified" });
+});
+
+it("applies the additive SaaS chain without silently confirming the removed prayer source", async () => {
+  await db.exec(readFileSync("migrations/010_product_consolidation.sql", "utf8"));
+  await db.exec(readFileSync("migrations/011_stripe_billing.sql", "utf8"));
+  const row = (
+    await db.query("SELECT prayer_configuration,onboarding_step FROM miqaat_preferences")
+  ).rows[0];
+  expect(row).toMatchObject({ prayer_configuration: {}, onboarding_step: "welcome" });
+  expect((await db.query("SELECT configuration FROM miqaat_automation")).rows[0]).toMatchObject({
+    configuration: { source: { kind: "london-unified" }, horizon: 60 },
+  });
+  expect((await db.query("SELECT stripe_event_id FROM miqaat_stripe_events")).rows).toHaveLength(0);
+});

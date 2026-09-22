@@ -18,7 +18,7 @@ export interface CoordinateNightCalculationInput {
   serviceDate: string;
   timeZone: string;
   calculationMethod?: number;
-  prayerTimeSource?: "coordinates" | "london-unified";
+  prayerTimeSource?: "coordinates";
   locale?: string;
   displayFormat?: DisplayFormat;
   showSeconds?: boolean;

@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
       JOIN miqaat_entitlements e ON e.user_id=a.user_id
       JOIN google_connections c ON c.id=a.google_connection_id AND c.user_id=a.user_id AND c.provider='google' AND c.disconnected_at IS NULL
       WHERE a.enabled AND (a.next_sync_at IS NULL OR a.next_sync_at<=now())
-      AND ((e.status='trial' AND e.trial_ends_at>now()) OR (e.status='active' AND e.provider_subscription_id IS NOT NULL))
+      AND ((e.status='trial' AND e.trial_ends_at>now()) OR (e.status IN ('active','trialing') AND e.plan<>'FREE' AND e.provider_subscription_id IS NOT NULL AND e.current_period_end>now()))
       ORDER BY a.next_sync_at NULLS FIRST, a.user_id LIMIT 3`;
     const results = await Promise.all(
       accounts.map(async (account) => {

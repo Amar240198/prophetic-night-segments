@@ -5,7 +5,6 @@ import {
   AlAdhanSchool,
   fetchAlAdhanPrayerTimes,
 } from "@/lib/providers/aladhan";
-import { getLondonUnifiedPrayerTimes } from "@/lib/providers/london-unified";
 import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -40,41 +39,6 @@ export async function GET(request: NextRequest) {
     ?.split(",")
     .map((value) => (value === "" || value === "null" ? null : Number(value)));
 
-  if (source === "london-unified") {
-    if (city !== "London" || country !== "United Kingdom") {
-      return NextResponse.json(
-        {
-          error: {
-            code: "INVALID_TIMETABLE_LOCATION",
-            message: "London Unified is only available for its published London coverage.",
-          },
-        },
-        { status: 400 },
-      );
-    }
-    try {
-      const result = getLondonUnifiedPrayerTimes(date);
-      return NextResponse.json({
-        maghrib: result.maghrib.iso,
-        fajr: result.fajr.iso,
-        formatted: { maghrib: result.maghrib.formatted, fajr: result.fajr.formatted },
-        timeZone: result.timezone,
-        location: "London, United Kingdom",
-        calculationMethod: result.calculationMethod,
-        juristicSchool: result.school,
-        source: result.source,
-        serviceDate: date,
-        dailyPrayerTimes: result.dailyPrayerTimes,
-        followingDayPrayerTimes: result.followingDayPrayerTimes,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "London Unified timetable failed.";
-      return NextResponse.json(
-        { error: { code: "INVALID_TIMETABLE_REQUEST", message } },
-        { status: 400 },
-      );
-    }
-  }
   if (source !== "aladhan") {
     return NextResponse.json(
       { error: { code: "INVALID_SOURCE", message: "Choose a supported prayer-time source." } },

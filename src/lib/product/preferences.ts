@@ -3,7 +3,7 @@ export const DEFAULT_PREFERENCES = {
   selectedPrayers: ["fajr", "dhuhr", "asr", "maghrib", "isha"],
   defaultSyncHorizon: 30,
   enabledModules: ["today", "all-prayers", "sixth-of-the-night", "calendar"],
-  prayerSource: "london-unified",
+  prayerSource: "aladhan",
   location: "gb-london",
 } as const;
 
@@ -48,7 +48,8 @@ export function validatePreferences(value: unknown): ProductPreferences {
         ].slice(0, 20)
       : [...DEFAULT_PREFERENCES.enabledModules],
     prayerSource:
-      typeof input.prayerSource === "string" && input.prayerSource.length <= 100
+      typeof input.prayerSource === "string" &&
+      ["aladhan", "coordinates", "manual"].includes(input.prayerSource)
         ? input.prayerSource
         : DEFAULT_PREFERENCES.prayerSource,
     location:

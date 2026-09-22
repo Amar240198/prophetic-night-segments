@@ -99,14 +99,27 @@ const DAILY_PRAYER_TITLES = {
   "prayer-isha": "Isha",
 } as const;
 
-/** Build civil-date prayer events from the same provider timetable used by the night engine. */
-export function buildDailyPrayerEvents(schedule: DailyPrayerSchedule): CalendarEvent[] {
+/** Resolve the supplied civil timetable using the same strict DST policy as calendar exports. */
+export function resolveDailyPrayerInstants(schedule: DailyPrayerSchedule): DailyPrayerSchedule {
   const date = Temporal.PlainDate.from(schedule.date);
   const at = (clock: string) =>
     Temporal.PlainDateTime.from(`${date.toString()}T${clock.length === 5 ? `${clock}:00` : clock}`)
       .toZonedDateTime(schedule.timeZone, { disambiguation: "reject" })
       .toInstant()
       .toString();
+  return {
+    ...schedule,
+    fajr: at(schedule.fajr),
+    sunrise: at(schedule.sunrise),
+    dhuhr: at(schedule.dhuhr),
+    asr: at(schedule.asr),
+    maghrib: at(schedule.maghrib),
+    isha: at(schedule.isha),
+  };
+}
+/** Build civil-date prayer events from the same provider timetable used by the night engine. */
+export function buildDailyPrayerEvents(schedule: DailyPrayerSchedule): CalendarEvent[] {
+  const instants = resolveDailyPrayerInstants(schedule);
   const description = [
     "Daily prayer timetable provided by the configured prayer source.",
     `Civil prayer date: ${schedule.date}`,
@@ -116,7 +129,7 @@ export function buildDailyPrayerEvents(schedule: DailyPrayerSchedule): CalendarE
   ].join("\n");
   return (Object.keys(DAILY_PRAYER_TITLES) as Array<keyof typeof DAILY_PRAYER_TITLES>).map((id) => {
     const field = id.replace("prayer-", "") as "fajr" | "dhuhr" | "asr" | "maghrib" | "isha";
-    const instant = at(schedule[field]);
+    const instant = instants[field];
     return {
       id,
       serviceDate: schedule.date,

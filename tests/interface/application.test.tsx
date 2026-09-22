@@ -2,253 +2,303 @@
 import "@testing-library/jest-dom/vitest";
 import React from "react";
 import { cleanup, fireEvent, render, screen, within, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import Home from "@/app/page";
-import { AppShell } from "@/components/app/AppShell";
-import { PrayerWorkspace } from "@/components/app/PrayerWorkspace";
-import { SixthPage, PrayersPage } from "@/components/app/PrayerPages";
-import { TodayPage } from "@/components/app/TodayPage";
-import { CalendarPage } from "@/components/app/CalendarPage";
-import { AccountPage } from "@/components/app/AccountPage";
-import { FastingCard } from "@/components/FastingCard";
-import { RoutinesCard } from "@/components/RoutinesCard";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { calculateNightSegments } from "@prophetic-night/night-engine";
+import { DEFAULT_PRAYER } from "@/lib/product/settings";
+import { DEFAULT_AUTOMATION } from "@/lib/automation/config";
+import { DEFAULT_ANALYSIS } from "@/lib/miqat/analysis";
+import { featureEntitlements } from "@/lib/product/entitlements";
 const navigation = vi.hoisted(() => ({ path: "/app", push: vi.fn(), refresh: vi.fn() }));
+const context = vi.hoisted(() => ({ value: {} as Record<string, unknown> }));
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.path,
   useRouter: () => navigation,
-  useSearchParams: () => new URLSearchParams("next=/app/calendar"),
+  useSearchParams: () => new URLSearchParams(),
 }));
-function workspace(content: React.ReactNode) {
-  return render(<PrayerWorkspace>{content}</PrayerWorkspace>);
+vi.mock("@/components/product/ProductContext", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/components/product/ProductContext")>()),
+  useProduct: () => context.value,
+}));
+import Home from "@/app/page";
+import { AppShell } from "@/components/app/AppShell";
+import { TodayPage } from "@/components/app/TodayPage";
+import { CalendarPage } from "@/components/app/CalendarPage";
+import { AccountPage } from "@/components/product/AccountPage";
+import { Onboarding } from "@/components/product/Onboarding";
+import { AutomationEditor } from "@/components/product/AutomationsPage";
+import { RoutinesCard } from "@/components/RoutinesCard";
+import { AuthForm } from "@/components/product/AuthForm";
+import { SettingsPage } from "@/components/product/SettingsPage";
+import { PrayerSettings } from "@/components/product/PrayerSettings";
+const day = {
+  date: "2026-09-18",
+  timezone: "Europe/London",
+  source: DEFAULT_PRAYER.source,
+  schedule: {
+    source: "AlAdhan",
+    timeZone: "Europe/London",
+    serviceDate: "2026-09-18",
+    fajr: "2026-09-18T04:30:00Z",
+    sunrise: "2026-09-18T05:40:00Z",
+    dhuhr: "2026-09-18T11:50:00Z",
+    asr: "2026-09-18T15:00:00Z",
+    maghrib: "2026-09-18T18:10:00Z",
+    isha: "2026-09-18T19:30:00Z",
+  },
+  night: calculateNightSegments({
+    maghrib: "2026-09-18T18:10:00Z",
+    fajr: "2026-09-19T04:30:00Z",
+    timeZone: "Europe/London",
+  }),
+  fasting: [{ date: "2026-09-18", kind: "dawud" }],
+};
+function state(plan: "FREE" | "PRO" = "FREE", onboarding = "complete") {
+  return {
+    user: { id: "user", email: "user@example.com" },
+    settings: {
+      prayer: DEFAULT_PRAYER,
+      configured: true,
+      revision: 1,
+      onboarding,
+      automation: DEFAULT_AUTOMATION,
+      analysis: DEFAULT_ANALYSIS,
+    },
+    entitlements: {
+      plan,
+      features: featureEntitlements({ plan, active: true }),
+      subscription: {
+        status: "active",
+        customer: plan === "PRO",
+        cancelAtPeriodEnd: false,
+        currentPeriodEnd: null,
+      },
+    },
+  };
 }
 beforeEach(() => {
   localStorage.clear();
   navigation.path = "/app";
+  context.value = {
+    state: state(),
+    day,
+    error: "",
+    dayError: "",
+    save: vi.fn(),
+    refresh: vi.fn(),
+    reloadDay: vi.fn(),
+  };
   vi.stubGlobal(
     "fetch",
-    vi
-      .fn()
-      .mockResolvedValue({ ok: true, json: async () => ({ configured: true, connected: false }) }),
+    vi.fn(async () => Response.json({ configured: true, connected: false })),
   );
 });
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-describe("Miqāt information architecture", () => {
-  it("shares saved fasting programmes with Today", async () => {
-    workspace(
-      <>
-        <FastingCard date="2026-09-18" />
-        <TodayPage />
-      </>,
-    );
-    fireEvent.click(screen.getByLabelText("Monday"));
-    expect(screen.getByText("Active programmes: Thursday.")).toBeInTheDocument();
-    expect(JSON.parse(localStorage.getItem("miqat.fasting.v1")!).selected).toEqual(["thursday"]);
-    await screen.findByText("Google Calendar: Disconnected");
+it("keeps acquired coordinates unsaved until explicitly confirmed", async () => {
+  const save = vi.fn(async () => undefined);
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition: (success: (p: unknown) => void) =>
+        success({ coords: { latitude: 51.5007292, longitude: -0.1246254 } }),
+    },
   });
-  it("keeps the public landing focused and exposes an anonymous calculator", () => {
-    render(<Home />);
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
-      "Islamic time, organised around your life.",
-    );
-    expect(screen.getByRole("link", { name: "Open Sixth calculator" })).toHaveAttribute(
-      "href",
-      "/sixth",
-    );
-    expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/app");
-    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  });
-  it("marks the current route in desktop and mobile navigation", () => {
-    navigation.path = "/app/prayers";
-    render(
-      <AppShell>
-        <p>Page content</p>
-      </AppShell>,
-    );
-    for (const name of ["Desktop navigation", "Mobile navigation"]) {
-      const nav = within(screen.getByRole("navigation", { name }));
-      expect(
-        nav.getByRole("link", { name: name.startsWith("Desktop") ? "All Prayers" : "Prayer" }),
-      ).toHaveAttribute("aria-current", "page");
-    }
-    expect(screen.getByRole("link", { name: "Skip to content" })).toHaveAttribute(
-      "href",
-      "#main-content",
-    );
-  });
-  it("opens More and closes it after navigation and Escape", () => {
-    render(
-      <AppShell>
-        <p>Page</p>
-      </AppShell>,
-    );
-    const more = screen.getByRole("button", { name: "More" });
-    fireEvent.click(more);
-    expect(more).toHaveAttribute("aria-expanded", "true");
-    screen
-      .getByRole("navigation", { name: "More navigation" })
-      .addEventListener("click", (event) => event.preventDefault());
-    fireEvent.click(
-      within(screen.getByRole("navigation", { name: "More navigation" })).getByRole("link", {
-        name: "Fasting",
+  render(<PrayerSettings initial={DEFAULT_PRAYER} onSave={save} />);
+  fireEvent.click(screen.getByRole("button", { name: /precise location/i }));
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Latitude")).toHaveValue(51.5007292);
+  fireEvent.click(screen.getByRole("button", { name: "Save prayer settings" }));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: expect.objectContaining({
+          kind: "coordinates",
+          latitude: 51.5007292,
+          longitude: -0.1246254,
+          timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        }),
       }),
-    );
-    expect(more).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(more);
-    fireEvent.keyDown(screen.getByRole("navigation", { name: "More navigation" }), {
-      key: "Escape",
-    });
-    expect(more).toHaveFocus();
-    expect(more).toHaveAttribute("aria-expanded", "false");
-  });
-  it("shows summaries on Today without module configuration", async () => {
-    workspace(<TodayPage />);
-    expect(
-      screen.getByRole("heading", { name: "Your Islamic calendar today" }),
-    ).toBeInTheDocument();
-    fireEvent.click(screen.getByText("Prayer, night and sync details"));
-    for (const name of [
-      "Next prayer",
-      "Today’s schedule",
-      "Night",
-      "Fasting",
-      "Routines",
-      "Calendar",
-    ])
-      expect(screen.getByRole("heading", { name })).toBeInTheDocument();
-    expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Prayer-time source")).not.toBeInTheDocument();
-    expect(await screen.findByText("Google Calendar: Disconnected")).toBeInTheDocument();
-  });
-  it("keeps Sixth isolated from fasting and routines", () => {
-    workspace(<SixthPage />);
-    expect(
-      screen.getByRole("heading", { level: 1, name: "Sixth of the Night" }),
-    ).toBeInTheDocument();
-    expect(screen.getByLabelText("Prayer-time source")).toBeInTheDocument();
-    expect(screen.queryByText("Fasting schedules")).not.toBeInTheDocument();
-    expect(screen.queryByText("Personal routines")).not.toBeInTheDocument();
-  });
-  it("loads All Prayers without a night timeline", async () => {
-    vi.mocked(fetch).mockImplementation(
-      async (url) =>
-        ({
-          ok: true,
-          json: async () =>
-            String(url).startsWith("/api/prayer-times")
-              ? {
-                  maghrib: "2026-09-18T18:10:00Z",
-                  fajr: "2026-09-19T04:30:00Z",
-                  timeZone: "Europe/London",
-                  location: "London",
-                  source: "London Unified",
-                  dailyPrayerTimes: {
-                    serviceDate: "2026-09-18",
-                    fajr: "05:30",
-                    sunrise: "06:40",
-                    dhuhr: "12:50",
-                    asr: "16:00",
-                    maghrib: "19:10",
-                    isha: "20:30",
+    ),
+  );
+});
+it("offers legacy source review and connection removal without exposing automation editors in Settings", async () => {
+  const current = state();
+  context.value.state = {
+    ...current,
+    settings: { ...current.settings, configured: false, sourceReviewRequired: true },
+  };
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json({ connected: true, email: "user@example.com" })),
+  );
+  render(<SettingsPage />);
+  expect(screen.getByText(/Your previous timetable is no longer supported/)).toBeInTheDocument();
+  expect(await screen.findByRole("button", { name: "Disconnect Google Calendar" })).toBeEnabled();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByText("Protection mode")).not.toBeInTheDocument();
+});
+it("clears previously loaded calendar events when a refresh discovers disconnection", async () => {
+  context.value.state = state("PRO");
+  let connected = true;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      Response.json(
+        url.endsWith("/session")
+          ? { connected }
+          : url.endsWith("/calendars")
+            ? { selected: ["primary"], calendars: [] }
+            : {
+                calendarStatus: "complete",
+                events: [
+                  {
+                    id: "event",
+                    title: "Existing meeting",
+                    start: day.schedule.dhuhr,
+                    end: day.schedule.asr,
+                    metadata: {},
                   },
-                }
-              : { connected: false, configured: true },
-        }) as Response,
-    );
-    workspace(<PrayersPage />);
-    fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
-    expect(await screen.findByText("Today’s prayer timetable")).toBeInTheDocument();
-    expect(screen.getByText("informational")).toBeInTheDocument();
-    expect(screen.queryByText("Conventional Night Division")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "Download selected (.ics)" }),
-    ).not.toBeInTheDocument();
+                ],
+                analyses: [],
+              },
+      ),
+    ),
+  );
+  render(<CalendarPage />);
+  expect(await screen.findByText("Existing meeting")).toBeInTheDocument();
+  connected = false;
+  fireEvent.click(screen.getByRole("button", { name: "Refresh schedule" }));
+  expect(await screen.findByRole("link", { name: "Connect Google Calendar" })).toBeInTheDocument();
+  expect(screen.queryByText("Existing meeting")).not.toBeInTheDocument();
+});
+it("presents one product and the separately available free calculator", () => {
+  render(<Home />);
+  expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
+    "Your calendar, automatically aligned with Salah.",
+  );
+  expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/sign-up");
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+it("has exactly five primary destinations on desktop and mobile", () => {
+  navigation.path = "/app/settings";
+  render(
+    <AppShell>
+      <p>Page</p>
+    </AppShell>,
+  );
+  for (const name of ["Desktop navigation", "Mobile navigation"]) {
+    const links = within(screen.getByRole("navigation", { name })).getAllByRole("link");
+    expect(links.map((x) => x.textContent)).toEqual([
+      "Today",
+      "Calendar",
+      "Automations",
+      "Settings",
+      "Account",
+    ]);
+    expect(links[3]).toHaveAttribute("aria-current", "page");
+  }
+});
+it("shows prayer times, Qiyām and fasting without editing controls", () => {
+  render(<TodayPage />);
+  expect(screen.getByText("05:30")).toBeInTheDocument();
+  expect(screen.getByText("Midpoint")).toBeInTheDocument();
+  expect(screen.getByText("Last third")).toBeInTheDocument();
+  expect(screen.getByText(/Fasting today/)).toBeInTheDocument();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  expect(fetch).not.toHaveBeenCalled();
+});
+it("keeps prayer and night data visible during a calendar disconnection", async () => {
+  context.value.state = state("PRO");
+  render(<TodayPage />);
+  expect(await screen.findByText(/Connect your calendar to see Salah/)).toBeInTheDocument();
+  expect(screen.getByText("05:30")).toBeInTheDocument();
+});
+it("offers a reusable upgrade experience to Free calendar users without reading Google", () => {
+  render(<CalendarPage />);
+  expect(screen.getByRole("link", { name: /Explore Miqāt Pro/ })).toBeInTheDocument();
+  expect(fetch).not.toHaveBeenCalled();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+it("resumes persisted onboarding and continues Free without calendar consent", async () => {
+  context.value.state = state("FREE", "plan");
+  render(<Onboarding />);
+  fireEvent.click(screen.getByRole("button", { name: "Continue Free" }));
+  await waitFor(() => expect(context.value.save).toHaveBeenCalledWith({ advance: true }));
+  expect(screen.queryByText("Choose calendars")).not.toBeInTheDocument();
+});
+it("edits automation in one form without exposing sync horizons", async () => {
+  const save = vi.fn(async () => {});
+  render(
+    <AutomationEditor initial={DEFAULT_AUTOMATION} analysis={DEFAULT_ANALYSIS} onSave={save} />,
+  );
+  fireEvent.click(screen.getByLabelText("Mondays"));
+  fireEvent.change(screen.getByLabelText("Preferred window"), { target: { value: "final-sixth" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save automation preferences" }));
+  await waitFor(() =>
+    expect(save).toHaveBeenCalledWith(
+      expect.objectContaining({ horizon: 30, qiyamWindow: "final-sixth" }),
+      DEFAULT_ANALYSIS,
+    ),
+  );
+  expect(screen.queryByText("Continuous")).not.toBeInTheDocument();
+});
+it("shows account identity and billing without connection or automation controls", () => {
+  render(<AccountPage />);
+  expect(screen.getByText("user@example.com")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: /Upgrade to Miqāt Pro/ })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+it("does not display a false email-sent message when reset delivery is unavailable", async () => {
+  vi.mocked(fetch).mockResolvedValue(
+    Response.json(
+      { error: { message: "Password reset email is not configured." } },
+      { status: 503 },
+    ),
+  );
+  render(<AuthForm mode="signin" />);
+  fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
+  fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
+  fireEvent.click(screen.getByRole("button", { name: "Request password reset" }));
+  expect(await screen.findByText("Password reset email is not configured.")).toBeInTheDocument();
+});
+it("supports adding, editing, disabling and deleting an account routine", async () => {
+  let rows: Record<string, unknown>[] = [];
+  vi.mocked(fetch).mockImplementation(async (_url, options) => {
+    if (options?.method === "DELETE") rows = [];
+    else if (options?.method === "POST" || options?.method === "PUT") {
+      const value = JSON.parse(String(options.body));
+      rows = [
+        {
+          ...value,
+          id: "11111111-1111-4111-8111-111111111111",
+          duration_minutes: value.durationMinutes,
+          timing_rule: value.timing,
+          created_at: "2026-09-19",
+          updated_at: "2026-09-19",
+        },
+      ];
+    }
+    return Response.json({ routines: rows, routine: rows[0] });
   });
-  it("preserves fasting programme controls and dated Dāwūd settings", () => {
-    render(<FastingCard date="2026-09-18" />);
-    fireEvent.click(screen.getByLabelText("Dāwūd"));
-    expect(screen.getByLabelText("Dāwūd starting date")).toHaveValue("2026-09-18");
-    expect(screen.getByRole("button", { name: "Download schedule (.ics)" })).toBeInTheDocument();
-  });
-  it("supports adding, editing, disabling and deleting an account routine", async () => {
-    let rows: Record<string, unknown>[] = [];
-    vi.mocked(fetch).mockImplementation(async (_url, options) => {
-      if (options?.method === "DELETE") rows = [];
-      else if (options?.method === "POST" || options?.method === "PUT") {
-        const value = JSON.parse(String(options.body));
-        rows = [
-          {
-            ...value,
-            id: "11111111-1111-4111-8111-111111111111",
-            duration_minutes: value.durationMinutes,
-            timing_rule: value.timing,
-            created_at: "2026-09-19",
-            updated_at: "2026-09-19",
-          },
-        ];
-      }
-      return Response.json({ routines: rows, routine: rows[0] });
-    });
-    render(<RoutinesCard />);
-    expect(screen.queryByLabelText("Routine name")).not.toBeInTheDocument();
-    await waitFor(() =>
-      expect(screen.queryByText("Loading account routines…")).not.toBeInTheDocument(),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "+ Add Custom Routine" }));
-    fireEvent.change(screen.getByLabelText("Routine name"), { target: { value: "Reading" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
-    await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
-    fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "30" } });
-    fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
-    expect(await screen.findByText(/Reading · quran · 30 minutes/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Disable" }));
-    expect(await screen.findByRole("button", { name: "Enable" })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(screen.queryByText(/Reading ·/)).not.toBeInTheDocument());
-  });
-  it("shows central calendar controls without unsupported sync toggles", async () => {
-    workspace(<CalendarPage />);
-    expect(screen.getByRole("heading", { level: 1, name: "Calendar" })).toBeInTheDocument();
-    expect(screen.getByLabelText("All Prayers")).toBeChecked();
-    expect(screen.getByLabelText("Sixth")).toBeChecked();
-    expect(await screen.findByRole("button", { name: "Connect Google Calendar" })).toBeEnabled();
-    expect(screen.queryByRole("button", { name: /Delete all/ })).not.toBeInTheDocument();
-  });
-  it("uses existing authentication and returns to the requested app route", async () => {
-    workspace(<AccountPage user={null} />);
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
-    fireEvent.change(screen.getByLabelText("Password"), {
-      target: { value: "a-long-test-password" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
-    await vi.waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/app/calendar"));
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/auth/signin",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-  it("offers an enumeration-resistant forgot-password request from sign in", async () => {
-    workspace(<AccountPage user={null} />);
-    fireEvent.click(screen.getByRole("button", { name: "Forgot password?" }));
-    expect(screen.getByRole("button", { name: "Send reset link" })).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText("Email"), { target: { value: "user@example.com" } });
-    fireEvent.click(screen.getByRole("button", { name: "Send reset link" }));
-    await screen.findByRole("status");
-    expect(fetch).toHaveBeenCalledWith(
-      "/api/auth/forgot-password",
-      expect.objectContaining({ method: "POST" }),
-    );
-  });
-  it("shows the actual account plan and data export", async () => {
-    workspace(<AccountPage user={{ id: "id", email: "user@example.com", plan: "FREE" }} />);
-    expect(screen.getByText("user@example.com")).toBeInTheDocument();
-    expect(screen.getByText("FREE")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Export my data" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Sign out" })).toBeInTheDocument();
-    await screen.findByText("Google Calendar: Disconnected");
-  });
+  render(<RoutinesCard />);
+  expect(screen.queryByLabelText("Routine name")).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.queryByText("Loading account routines…")).not.toBeInTheDocument(),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "+ Add Custom Routine" }));
+  fireEvent.change(screen.getByLabelText("Routine name"), { target: { value: "Reading" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
+  await waitFor(() => expect(screen.queryByRole("form")).not.toBeInTheDocument());
+  fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+  fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "30" } });
+  fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
+  expect(await screen.findByText(/Reading · quran · 30 minutes/)).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Disable" }));
+  expect(await screen.findByRole("button", { name: "Enable" })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(screen.queryByText(/Reading ·/)).not.toBeInTheDocument());
 });

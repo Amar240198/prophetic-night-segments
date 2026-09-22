@@ -279,7 +279,16 @@ it("ends waiting with a useful error if the closed popup never establishes a ses
 it("submits one explicit 30-night action with only selected types and reports partial results", async () => {
   const fetchMock = vi.fn().mockResolvedValueOnce(json({ connected: true, configured: true }));
   vi.stubGlobal("fetch", fetchMock);
-  const syncContext = { startDate: "2026-03-20", source: { kind: "london-unified" as const } };
+  const syncContext = {
+    startDate: "2026-03-20",
+    source: {
+      kind: "coordinates" as const,
+      latitude: 51.5074,
+      longitude: -0.1278,
+      timeZone: "Europe/London",
+      calculationMethod: 3,
+    },
+  };
   const syncOptions = {
     wakeBufferMinutes: 15,
     dawudSelected: false,
@@ -396,7 +405,16 @@ it.each([
       <GoogleCalendarSection
         events={events}
         valid
-        syncContext={{ startDate: "2026-03-01", source: { kind: "london-unified" } }}
+        syncContext={{
+          startDate: "2026-03-01",
+          source: {
+            kind: "coordinates",
+            latitude: 51.5074,
+            longitude: -0.1278,
+            timeZone: "Europe/London",
+            calculationMethod: 3,
+          },
+        }}
         syncOptions={{
           wakeBufferMinutes: 15,
           dawudSelected: false,
@@ -444,7 +462,16 @@ it("restores Continuous from the session without confusing it with fixed 90 days
     <GoogleCalendarSection
       events={events}
       valid
-      syncContext={{ startDate: "2026-03-01", source: { kind: "london-unified" } }}
+      syncContext={{
+        startDate: "2026-03-01",
+        source: {
+          kind: "coordinates",
+          latitude: 51.5074,
+          longitude: -0.1278,
+          timeZone: "Europe/London",
+          calculationMethod: 3,
+        },
+      }}
       syncOptions={{
         wakeBufferMinutes: 15,
         dawudSelected: false,
@@ -465,7 +492,16 @@ it("restores Continuous from the session without confusing it with fixed 90 days
   expect(screen.getByRole("radio", { name: "30 days" })).toBeChecked();
 });
 
-const removalContext = { startDate: "2026-03-01", source: { kind: "london-unified" as const } };
+const removalContext = {
+  startDate: "2026-03-01",
+  source: {
+    kind: "coordinates" as const,
+    latitude: 51.5074,
+    longitude: -0.1278,
+    timeZone: "Europe/London",
+    calculationMethod: 3,
+  },
+};
 const removalOptions = {
   wakeBufferMinutes: 15,
   dawudSelected: false,

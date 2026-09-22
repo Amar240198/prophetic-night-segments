@@ -1,1 +1,4 @@
-export { SixthPage as default } from "@/components/app/PrayerPages";
+import { redirect } from "next/navigation";
+export default function Page() {
+  redirect("/sixth");
+}

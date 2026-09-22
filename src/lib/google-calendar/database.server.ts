@@ -27,6 +27,8 @@ export async function persistConnection(input: {
   sessionHash: string;
   sessionExpiresAt: string;
   userId?: string;
+  scopes?: string;
+  management?: boolean;
 }) {
   // Keep the legacy unbound path for pre-account integrations and tests. New
   // OAuth connections are claimed atomically for the authenticated Miqāt user.
@@ -35,10 +37,12 @@ export async function persistConnection(input: {
     WITH connection AS (
       INSERT INTO google_connections
         (id, user_id, google_subject, google_account_email, encrypted_access_token,
-         encrypted_refresh_token, access_token_expires_at)
+         encrypted_refresh_token, access_token_expires_at, granted_scopes, management_enabled)
       VALUES (${input.connectionId}, ${input.userId}, ${input.subject}, ${input.email}, ${input.accessToken},
-              ${input.refreshToken}, ${input.accessExpiresAt})
+              ${input.refreshToken}, ${input.accessExpiresAt}, ${input.scopes ?? ""}, ${input.management === true})
       ON CONFLICT (provider, google_subject) DO UPDATE SET
+        granted_scopes = CASE WHEN ${input.scopes ?? null}::text IS NULL THEN google_connections.granted_scopes ELSE EXCLUDED.granted_scopes END,
+        management_enabled = CASE WHEN ${input.scopes ?? null}::text IS NULL THEN google_connections.management_enabled ELSE EXCLUDED.management_enabled END,
         google_account_email = EXCLUDED.google_account_email,
         encrypted_access_token = EXCLUDED.encrypted_access_token,
         encrypted_refresh_token = COALESCE(EXCLUDED.encrypted_refresh_token, google_connections.encrypted_refresh_token),
@@ -116,12 +120,14 @@ export async function deleteConnection(hash: string): Promise<StoredSession | nu
       AND c.provider = 'google' AND c.disconnected_at IS NULL FOR UPDATE OF c
   ), disconnected AS (
     UPDATE google_connections SET encrypted_access_token = NULL, encrypted_refresh_token = NULL,
-      access_token_expires_at = NULL, disconnected_at = now(), updated_at = now()
+      access_token_expires_at = NULL, management_enabled=false, granted_scopes='', disconnected_at = now(), updated_at = now()
     WHERE id IN (SELECT connection_id FROM target)
   ), sessions AS (
     DELETE FROM browser_sessions WHERE google_connection_id IN (SELECT connection_id FROM target)
   ), preferences AS (
     DELETE FROM google_calendar_sync_preferences WHERE google_connection_id IN (SELECT connection_id FROM target)
+  ), analysis_preferences AS (
+    DELETE FROM calendar_preferences WHERE connection_id IN (SELECT connection_id FROM target)
   ), leases AS (
     DELETE FROM google_calendar_sync_leases WHERE google_connection_id IN (SELECT connection_id FROM target)
   ) SELECT * FROM target`;

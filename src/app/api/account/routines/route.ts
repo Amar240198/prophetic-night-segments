@@ -1,3 +1,4 @@
+import { getEntitlements } from "@/lib/product/entitlements.server";
 import { NextRequest, NextResponse } from "next/server";
 import { database } from "@/lib/google-calendar/database.server";
 import { assertSameOrigin, readAppUser } from "@/lib/auth/session.server";
@@ -12,6 +13,13 @@ function unauthenticated() {
 export async function GET() {
   const user = await readAppUser();
   if (!user) return unauthenticated();
+  if (!(await getEntitlements(user.id)).features["advanced-routines"])
+    return NextResponse.json(
+      {
+        error: { code: "PRO_REQUIRED", message: "Advanced routines are available with Miqāt Pro." },
+      },
+      { status: 403 },
+    );
   const rows =
     await database()`SELECT id, name, routine_type AS type, enabled, duration_minutes, recurrence, weekdays, timing_rule, calendar_sync_enabled, notification_enabled, notification_minutes, created_at, updated_at FROM miqaat_routines WHERE user_id = ${user.id} ORDER BY created_at`;
   return NextResponse.json({ routines: rows });
@@ -27,6 +35,13 @@ export async function POST(request: NextRequest) {
   }
   const user = await readAppUser();
   if (!user) return unauthenticated();
+  if (!(await getEntitlements(user.id)).features["advanced-routines"])
+    return NextResponse.json(
+      {
+        error: { code: "PRO_REQUIRED", message: "Advanced routines are available with Miqāt Pro." },
+      },
+      { status: 403 },
+    );
   try {
     const body = (await request.json()) as Record<string, unknown>;
     const valid = validateRoutine({
@@ -70,6 +85,13 @@ export async function PUT(request: NextRequest) {
   }
   const user = await readAppUser();
   if (!user) return unauthenticated();
+  if (!(await getEntitlements(user.id)).features["advanced-routines"])
+    return NextResponse.json(
+      {
+        error: { code: "PRO_REQUIRED", message: "Advanced routines are available with Miqāt Pro." },
+      },
+      { status: 403 },
+    );
   const id = request.nextUrl.searchParams.get("id");
   if (!id || !/^[0-9a-f-]{36}$/.test(id))
     return NextResponse.json(
@@ -115,6 +137,13 @@ export async function DELETE(request: NextRequest) {
   }
   const user = await readAppUser();
   if (!user) return unauthenticated();
+  if (!(await getEntitlements(user.id)).features["advanced-routines"])
+    return NextResponse.json(
+      {
+        error: { code: "PRO_REQUIRED", message: "Advanced routines are available with Miqāt Pro." },
+      },
+      { status: 403 },
+    );
   const id = request.nextUrl.searchParams.get("id");
   if (!id || !/^[0-9a-f-]{36}$/.test(id))
     return NextResponse.json(

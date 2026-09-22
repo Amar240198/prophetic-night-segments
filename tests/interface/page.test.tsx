@@ -23,9 +23,9 @@ beforeEach(() => {
               fajr: "2026-07-24T02:15:00Z",
               timeZone: "Europe/London",
               location: "London, United Kingdom",
-              calculationMethod: "London Unified Prayer Timetable 2026",
+              calculationMethod: "Test calculation method",
               juristicSchool: "Standard",
-              source: "London Unified",
+              source: "Test provider",
               serviceDate: "2026-07-23",
             }),
           },
@@ -41,7 +41,8 @@ describe("Prophetic Night Segments interface", () => {
       screen.getByRole("heading", { level: 1, name: "Sixth of the Night" }),
     ).toBeInTheDocument();
     expect(screen.getByText(/Maghrib to following Fajr/)).toBeInTheDocument();
-    expect(screen.getByText(/published 2026 London Unified timetable/)).toBeInTheDocument();
+    expect(screen.getByLabelText("Prayer-time source")).toHaveValue("aladhan");
+    expect(screen.queryByRole("option", { name: /London Unified/ })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Fajr preparation buffer")).not.toBeInTheDocument();
   });
 
@@ -80,9 +81,7 @@ describe("Prophetic Night Segments interface", () => {
     fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
 
     await screen.findByRole("heading", { name: "Conventional Night Division" });
-    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([
-      "/api/google-calendar/session",
-    ]);
+    expect(vi.mocked(fetch).mock.calls.map(([url]) => url)).toEqual([]);
     expect(screen.getByText("Trusted timetable / manual input")).toBeInTheDocument();
   });
 
@@ -192,4 +191,91 @@ describe("Prophetic Night Segments interface", () => {
       "Prayer times are temporarily unavailable.",
     );
   });
+});
+
+it("submits the exact acquired coordinates and recovers from a provider failure", async () => {
+  const getCurrentPosition = vi.fn((success) =>
+    success({ coords: { latitude: 51.5007292, longitude: -0.1246254, accuracy: 7.4 } }),
+  );
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: { getCurrentPosition },
+  });
+  let fail = true;
+  const fetcher = vi.fn(async (url: string) => {
+    if (url === "/api/google-calendar/session")
+      return { ok: true, json: async () => ({ configured: false, connected: false }) };
+    return fail
+      ? {
+          ok: false,
+          json: async () => ({
+            error: {
+              code: "PROVIDER_UNAVAILABLE",
+              message: "AlAdhan prayer times are temporarily unavailable. Try again.",
+            },
+          }),
+        }
+      : {
+          ok: true,
+          json: async () => ({
+            input: {
+              maghrib: "2026-07-23T20:02:00Z",
+              fajr: "2026-07-24T02:15:00Z",
+              timeZone: "Europe/London",
+            },
+            prayerTimes: {
+              provider: "AlAdhan prayer-times API",
+              calculationMethod: "Muslim World League",
+              timeZone: "Europe/London",
+            },
+          }),
+        };
+  });
+  vi.stubGlobal("fetch", fetcher);
+  render(<Home />);
+  fireEvent.change(screen.getByLabelText("Prayer-time source"), {
+    target: { value: "coordinates" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Use my precise location" }));
+  fireEvent.change(screen.getByLabelText("Service date"), { target: { value: "2026-07-23" } });
+  fireEvent.change(screen.getByLabelText("IANA timezone"), { target: { value: "Europe/London" } });
+  fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "AlAdhan prayer times are temporarily unavailable",
+  );
+  const call = vi
+    .mocked(fetch)
+    .mock.calls.find(([url]) => url === "/api/v1/night/calculate-from-coordinates")!;
+  expect(JSON.parse(call[1]!.body as string)).toMatchObject({
+    latitude: 51.5007292,
+    longitude: -0.1246254,
+    serviceDate: "2026-07-23",
+    timeZone: "Europe/London",
+  });
+  fail = false;
+  fireEvent.click(screen.getByRole("button", { name: "Calculate this night" }));
+  expect(
+    await screen.findByRole("heading", { name: "Conventional Night Division" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+});
+
+it.each([1, 2, 3])("keeps geolocation error %s separate from provider failures", (code) => {
+  Object.defineProperty(navigator, "geolocation", {
+    configurable: true,
+    value: {
+      getCurrentPosition: (_success: unknown, failure: (error: { code: number }) => void) =>
+        failure({ code }),
+    },
+  });
+  render(<Home />);
+  fireEvent.change(screen.getByLabelText("Prayer-time source"), {
+    target: { value: "coordinates" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Use my precise location" }));
+  expect(screen.getByRole("alert")).toHaveTextContent(/location/i);
+  expect(
+    vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes("calculate-from-coordinates")),
+  ).toBe(false);
+  expect(screen.getByRole("button", { name: "Use my precise location" })).toBeEnabled();
 });

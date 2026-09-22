@@ -34,6 +34,7 @@ export async function runAccountAutomation(
         kinds.push(...config.selectedPrayers.map((p) => `prayer-${p}`));
       if (config.modules.includes("night"))
         kinds.push(
+          "qiyam",
           "night-midpoint",
           "last-third",
           "final-sixth",

@@ -7,7 +7,13 @@ import type { SyncRequest } from "./sync";
 const input: SyncRequest = {
   startDate: "2026-03-28",
   nights: 30,
-  source: { kind: "london-unified" },
+  source: {
+    kind: "coordinates",
+    latitude: 51.5074,
+    longitude: -0.1278,
+    timeZone: "Europe/London",
+    calculationMethod: 3,
+  },
   selected: [
     "last-third",
     "prayer",
@@ -94,4 +100,8 @@ it("supports a bounded configurable horizon and preserves all AlAdhan calculatio
       source: { ...source, options: { ...source.options, tune: [999] } },
     }),
   ).toThrow();
+});
+
+it("rejects the removed static source without silently substituting a provider", () => {
+  expect(() => validateSyncRequest({ ...input, source: { kind: "london-unified" } })).toThrow();
 });

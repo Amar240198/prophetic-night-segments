@@ -28,6 +28,15 @@ beforeAll(async () => {
   await db.exec(readFileSync("migrations/003_google_calendar_night_parts.sql", "utf8"));
   await db.exec(readFileSync("migrations/004_calendar_ownership.sql", "utf8"));
   await db.exec(readFileSync("migrations/005_miqaat_accounts.sql", "utf8"));
+  for (const file of [
+    "006_miqaat_automation",
+    "007_miqaat_password_resets",
+    "008_calendar_intelligence",
+    "009_remove_london_unified",
+    "010_product_consolidation",
+    "011_stripe_billing",
+  ])
+    await db.exec(readFileSync(`migrations/${file}.sql`, "utf8"));
   await db.query("INSERT INTO miqaat_users (id, email, password_hash) VALUES ($1, $2, $3)", [
     "11111111-1111-4111-8111-111111111111",
     "miqaat@example.com",
@@ -72,6 +81,9 @@ async function sessionCookie(expiresAt = Date.now() + 3_600_000) {
     new Date(expiresAt).toISOString(),
     sessionHash(id),
   ]);
+  await db.exec(
+    "UPDATE google_connections SET management_enabled=true, granted_scopes='https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/calendar.readonly'",
+  );
   return `${SESSION_COOKIE}=${id}; ${await appCookie()}`;
 }
 const event = {
@@ -111,6 +123,10 @@ beforeEach(async () => {
     ...args: unknown[]
   ) => realSetTimeout(callback, delay === 300 ? 0 : delay, ...args)) as typeof setTimeout);
   await db.exec("TRUNCATE google_connections CASCADE");
+  await db.exec(
+    "INSERT INTO miqaat_entitlements(user_id,plan,status,provider_subscription_id,current_period_end) VALUES ('11111111-1111-4111-8111-111111111111','PRO','active','sub_test',now()+interval '30 days') ON CONFLICT(user_id) DO UPDATE SET plan='PRO',status='active',current_period_end=now()+interval '30 days'",
+  );
+  vi.stubEnv("CALENDAR_WRITES_ENABLED", "true");
   vi.stubEnv("DATABASE_URL", "postgresql://unused-test-only/test");
   vi.stubEnv("GOOGLE_CLIENT_ID", "test-client-id");
   vi.stubEnv("GOOGLE_CLIENT_SECRET", "test-client-secret");
@@ -125,7 +141,7 @@ afterEach(() => {
 });
 
 async function startFlow() {
-  const response = await connect(request("connect"));
+  const response = await connect(request("connect", { cookie: await appCookie() }));
   const authorization = new URL(response.headers.get("location")!);
   const cookie = `${FLOW_COOKIE}=${response.cookies.get(FLOW_COOKIE)!.value}`;
   return { authorization, cookie, state: authorization.searchParams.get("state")! };
@@ -140,7 +156,7 @@ async function appCookie(userId = "11111111-1111-4111-8111-111111111111") {
 }
 
 describe("Google OAuth", () => {
-  it("requests only owned events and email, with state, PKCE and a private cookie", async () => {
+  it("requests only read calendar and email, with state, PKCE and a private cookie", async () => {
     const { authorization, cookie } = await startFlow();
     expect(authorization.origin).toBe("https://accounts.google.com");
     expect(authorization.searchParams.get("scope")?.split(" ")).toEqual([
@@ -151,7 +167,7 @@ describe("Google OAuth", () => {
     expect(authorization.searchParams.get("code_challenge_method")).toBe("S256");
     expect(authorization.searchParams.get("code_challenge")).toHaveLength(43);
     expect(cookie).not.toContain("verifier");
-    const response = await connect(request("connect"));
+    const response = await connect(request("connect", { cookie: await appCookie() }));
     expect(response.headers.get("set-cookie")).toContain("HttpOnly");
     expect(response.headers.get("set-cookie")).toContain("SameSite=lax");
   });
@@ -292,7 +308,9 @@ describe("Google OAuth", () => {
   it("uses secure cookies on the configured HTTPS deployment", async () => {
     vi.stubEnv("GOOGLE_OAUTH_REDIRECT_URI", "https://example.com/api/google-calendar/callback");
     const response = await connect(
-      new NextRequest("https://example.com/api/google-calendar/connect"),
+      new NextRequest("https://example.com/api/google-calendar/connect", {
+        headers: { cookie: await appCookie() },
+      }),
     );
     expect(response.headers.get("set-cookie")).toContain("Secure");
   });
@@ -652,7 +670,13 @@ import type { SyncRequest } from "../../src/lib/google-calendar/sync";
 const syncInput: SyncRequest = {
   startDate: "2026-03-20",
   nights: 30,
-  source: { kind: "london-unified" },
+  source: {
+    kind: "coordinates",
+    latitude: 51.5074,
+    longitude: -0.1278,
+    timeZone: "Europe/London",
+    calculationMethod: 3,
+  },
   selected: ["last-third"],
   options: {
     wakeBufferMinutes: 15,
@@ -865,18 +889,14 @@ describe("persistent multi-night Google sync", () => {
     );
   });
 
-  it("does not invent London timetable entries beyond published coverage", async () => {
+  it("loads live provider nights across the year boundary", async () => {
     const service = calendarService();
     const result = await runSync(
       { ...syncInput, nights: 3, startDate: "2026-12-30" },
       await sessionCookie(),
     );
-    expect(result.syncedNights).toBe(1);
-    expect(result.outcomes.slice(1).map((item: { code: string }) => item.code)).toEqual([
-      "PRAYER_TIMES_UNAVAILABLE",
-      "PRAYER_TIMES_UNAVAILABLE",
-    ]);
-    expect(service.inserts()).toBe(1);
+    expect(result.syncedNights).toBe(3);
+    expect(service.inserts()).toBe(3);
   });
 
   it("enforces an account lease across sessions and releases only the matching owner", async () => {
@@ -2381,9 +2401,6 @@ describe("calendar mutation maintenance fence", () => {
       ["events", { events: [event] }],
       ["sync", syncInput],
       ["remove", { scope: "night", selected: [event.id], startDate: "2026-03-28" }],
-      ["disconnect", undefined],
-      ["connect", undefined],
-      ["callback?code=unexpected&state=unexpected", undefined],
     ] as const;
     for (const [path, body] of cases) {
       const response = await (path.startsWith("callback") || path === "connect"
@@ -2417,6 +2434,7 @@ describe("calendar mutation maintenance fence", () => {
     for (const value of [undefined, "false", "TRUE", "1"]) {
       if (value === undefined) vi.unstubAllEnvs();
       else vi.stubEnv("CALENDAR_MUTATIONS_PAUSED", value);
+      vi.stubEnv("CALENDAR_WRITES_ENABLED", "true");
       expect(() => assertCalendarMutationsEnabled()).not.toThrow();
     }
   });
@@ -2498,4 +2516,322 @@ it("does not tombstone another calendar's mapping when the provider ID matches",
   expect(
     (await findOwnedEvent(active.connectionId, "2026-03-28", event.id, "secondary"))!.deletedAt,
   ).toBeNull();
+});
+
+// Calendar intelligence routes reuse the production account/session and encryption boundary.
+import {
+  GET as readCalendars,
+  POST as selectCalendars,
+} from "@/app/api/google-calendar/intelligence/calendars/route";
+import { POST as readTimeline } from "@/app/api/google-calendar/intelligence/timeline/route";
+import { POST as prayerBlock } from "@/app/api/google-calendar/intelligence/prayer-block/route";
+import { POST as disableManagement } from "@/app/api/google-calendar/intelligence/management/route";
+import { POST as upgradeManagement } from "@/app/api/google-calendar/connect/route";
+import { calendarMutation } from "@/lib/calendar/mutation.server";
+function intelligenceRequest(path: string, cookie?: string, body?: unknown) {
+  return new NextRequest(`${origin}/api/google-calendar/intelligence/${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { origin, "Content-Type": "application/json", ...(cookie ? { cookie } : {}) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+}
+function mockIntelligencePrayerDay(url: URL) {
+  return json({
+    code: 200,
+    data: {
+      timings: {
+        Fajr: "06:00",
+        Sunrise: "07:30",
+        Dhuhr: "12:00",
+        Asr: "14:00",
+        Maghrib: "16:00",
+        Isha: "18:00",
+        Midnight: "23:00",
+      },
+      date: { gregorian: { date: url.pathname.split("/").at(-1) } },
+      meta: { timezone: "Europe/London" },
+    },
+  });
+}
+async function intelligenceFixture() {
+  const cookie = await sessionCookie();
+  const rows = await db.query<{ id: string }>("SELECT id FROM google_connections");
+  const connectionId = rows.rows[0]!.id;
+  await db.query(
+    "INSERT INTO calendar_preferences(connection_id,provider,calendar_id) VALUES($1,'google','work')",
+    [connectionId],
+  );
+  await db.query(
+    "INSERT INTO miqaat_preferences(user_id,prayer_analysis) VALUES($1,$2) ON CONFLICT(user_id) DO UPDATE SET prayer_analysis=EXCLUDED.prayer_analysis",
+    [
+      "11111111-1111-4111-8111-111111111111",
+      JSON.stringify({ protectionMode: "CREATE_CALENDAR_BLOCK" }),
+    ],
+  );
+  const provider = new Map<string, Record<string, unknown>>();
+  let busyEvents: unknown[] = [];
+  vi.mocked(fetch).mockImplementation(async (input, options) => {
+    const url = new URL(String(input));
+    if (url.hostname === "api.aladhan.com") return mockIntelligencePrayerDay(url);
+    const id = url.pathname.split("/").at(-1)!;
+    if (url.pathname.endsWith("calendarList"))
+      return json({
+        items: [
+          {
+            id: "work",
+            summary: "Work",
+            timeZone: "Europe/London",
+            accessRole: "owner",
+            primary: true,
+          },
+        ],
+      });
+    if (options?.method === "POST") {
+      const body = JSON.parse(options.body as string);
+      if (provider.has(body.id)) return json({}, 409);
+      provider.set(body.id, { ...body, etag: "v1" });
+      return json(body);
+    }
+    if (options?.method === "PATCH") {
+      const body = JSON.parse(options.body as string);
+      provider.set(id, { ...body, etag: "v2" });
+      return json(body);
+    }
+    if (options?.method === "DELETE") {
+      provider.delete(id);
+      return new Response(null, { status: 204 });
+    }
+    if (id === "events") return json({ items: [...provider.values(), ...busyEvents] });
+    return provider.has(id) ? json(provider.get(id)) : json({}, 404);
+  });
+  return {
+    cookie,
+    connectionId,
+    provider,
+    setBusy: (events: unknown[]) => {
+      busyEvents = events;
+    },
+  };
+}
+const intelligenceInput = {
+  date: "2026-12-01",
+  source: {
+    kind: "aladhan",
+    options: { city: "London", country: "United Kingdom", calculationMethod: 3, school: 0 },
+  },
+  prayer: "dhuhr",
+  calendarId: "work",
+};
+describe("calendar intelligence acceptance", () => {
+  it("requires app authentication on every new route", async () => {
+    for (const handler of [
+      readCalendars,
+      selectCalendars,
+      readTimeline,
+      prayerBlock,
+      disableManagement,
+    ]) {
+      const response = await handler(intelligenceRequest("test", undefined, {}));
+      expect(response.status).toBe(401);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it("does not accept a calendar cookie after the app user changes", async () => {
+    const { cookie } = await intelligenceFixture();
+    const response = await readCalendars(intelligenceRequest("calendars", cookie.split(";")[0]));
+    expect(response.status).toBe(401);
+  });
+  it("reads selected calendars, calculates canonical night and remains read-only", async () => {
+    const { cookie } = await intelligenceFixture();
+    vi.stubEnv("CALENDAR_WRITES_ENABLED", "false");
+    const response = await readTimeline(intelligenceRequest("timeline", cookie, intelligenceInput));
+    expect(response.status).toBe(200);
+    const day = await response.json();
+    expect(day.calendarStatus).toBe("complete");
+    expect(day.analyses).toHaveLength(5);
+    expect(day.night.segments).toHaveLength(6);
+    expect(day.analyses[1].recommendedWindows.length).toBeGreaterThan(0);
+    const preview = await prayerBlock(
+      intelligenceRequest("prayer-block", cookie, intelligenceInput),
+    );
+    expect(preview.status).toBe(200);
+    const proposal = await preview.json();
+    expect(proposal.writesEnabled).toBe(false);
+    const confirm = await prayerBlock(
+      intelligenceRequest("prayer-block?action=confirm", cookie, {
+        ...intelligenceInput,
+        token: proposal.token,
+      }),
+    );
+    expect(confirm.status).toBe(503);
+    expect((await confirm.json()).error.code).toBe("CALENDAR_WRITES_DISABLED");
+    expect(vi.mocked(fetch).mock.calls.every(([, o]) => !o?.method || o.method === "GET")).toBe(
+      true,
+    );
+  });
+  it("updates selection atomically including deselection and rejects unowned calendar ids", async () => {
+    const { cookie } = await intelligenceFixture();
+    expect(
+      (await selectCalendars(intelligenceRequest("calendars", cookie, { selected: ["foreign"] })))
+        .status,
+    ).toBe(403);
+    for (const selected of [[], ["work"], [], ["work"]]) {
+      expect(
+        (await selectCalendars(intelligenceRequest("calendars", cookie, { selected }))).status,
+      ).toBe(200);
+      expect(
+        (await (await readCalendars(intelligenceRequest("calendars", cookie))).json()).selected,
+      ).toEqual(selected);
+    }
+  });
+  it("never claims free time when Google fails or a selected calendar disappears", async () => {
+    const { cookie } = await intelligenceFixture();
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = new URL(String(input));
+      return url.hostname === "api.aladhan.com" ? mockIntelligencePrayerDay(url) : json({}, 503);
+    });
+    const day = await (
+      await readTimeline(intelligenceRequest("timeline", cookie, intelligenceInput))
+    ).json();
+    expect(day.calendarStatus).toBe("unavailable");
+    expect(
+      day.analyses.every(
+        (a: { status: string; recommendedWindows: unknown[] }) =>
+          a.status === "UNKNOWN" && a.recommendedWindows.length === 0,
+      ),
+    ).toBe(true);
+  });
+  it("previews, confirms once, audits, recognizes protection and deduplicates retries", async () => {
+    const { cookie, provider } = await intelligenceFixture();
+    const preview = await (
+      await prayerBlock(intelligenceRequest("prayer-block", cookie, intelligenceInput))
+    ).json();
+    const confirm = () =>
+      prayerBlock(
+        intelligenceRequest("prayer-block?action=confirm", cookie, {
+          ...intelligenceInput,
+          token: preview.token,
+        }),
+      );
+    expect((await confirm()).status).toBe(200);
+    expect((await (await confirm()).json()).status).toBe("existing");
+    expect(provider.size).toBe(1);
+    const audits = await db.query(
+      "SELECT status,after_state FROM calendar_mutation_audit WHERE status='succeeded'",
+    );
+    expect(audits.rows).toHaveLength(1);
+    expect(JSON.stringify(audits.rows)).not.toContain("test-access-token");
+    const day = await (
+      await readTimeline(intelligenceRequest("timeline", cookie, intelligenceInput))
+    ).json();
+    expect(day.analyses[1].status).toBe("PROTECTED");
+    const removeInput = { ...intelligenceInput, operation: "delete" };
+    const removal = await (
+      await prayerBlock(intelligenceRequest("prayer-block", cookie, removeInput))
+    ).json();
+    expect(
+      (
+        await prayerBlock(
+          intelligenceRequest("prayer-block?action=confirm", cookie, {
+            ...removeInput,
+            token: removal.token,
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(provider.size).toBe(0);
+  });
+  it("rejects stale previews and forged preview tokens", async () => {
+    const f = await intelligenceFixture();
+    const preview = await (
+      await prayerBlock(intelligenceRequest("prayer-block", f.cookie, intelligenceInput))
+    ).json();
+    f.setBusy([
+      {
+        id: "new-meeting",
+        start: { dateTime: preview.proposal.start },
+        end: { dateTime: preview.proposal.end },
+      },
+    ]);
+    expect(
+      (
+        await prayerBlock(
+          intelligenceRequest("prayer-block?action=confirm", f.cookie, {
+            ...intelligenceInput,
+            token: preview.token,
+          }),
+        )
+      ).status,
+    ).toBe(409);
+    expect(f.provider.size).toBe(0);
+    expect(
+      (
+        await prayerBlock(
+          intelligenceRequest("prayer-block?action=confirm", f.cookie, {
+            ...intelligenceInput,
+            token: preview.token + "x",
+          }),
+        )
+      ).status,
+    ).toBe(403);
+  });
+  it("disables management without disabling reads and blocks every mutation verb", async () => {
+    const { cookie } = await intelligenceFixture();
+    expect((await disableManagement(intelligenceRequest("management", cookie, {}))).status).toBe(
+      200,
+    );
+    expect((await readCalendars(intelligenceRequest("calendars", cookie))).status).toBe(200);
+    const active = await readSession(request("session", { cookie }));
+    for (const method of ["POST", "PATCH", "DELETE"])
+      await expect(
+        calendarMutation(active, "https://www.googleapis.com/calendar/v3/calendars/work/events", {
+          method,
+        }),
+      ).rejects.toThrow();
+    vi.stubEnv("CALENDAR_WRITES_ENABLED", "false");
+    for (const method of ["POST", "PATCH", "DELETE"])
+      await expect(
+        calendarMutation(active, "https://www.googleapis.com/calendar/v3/calendars/work/events", {
+          method,
+        }),
+      ).rejects.toMatchObject({ code: "CALENDAR_WRITES_DISABLED" });
+  });
+  it("requires explicit same-origin management upgrade and keeps read OAuth available with writes off", async () => {
+    vi.stubEnv("CALENDAR_WRITES_ENABLED", "false");
+    const cookie = await appCookie();
+    const read = await connect(request("connect", { cookie }));
+    expect(new URL(read.headers.get("location")!).searchParams.get("scope")).not.toContain(
+      "calendar.events",
+    );
+    const upgrade = await upgradeManagement(
+      new NextRequest(`${origin}/api/google-calendar/connect`, {
+        method: "POST",
+        headers: { origin, cookie },
+      }),
+    );
+    expect(new URL(upgrade.headers.get("location")!).searchParams.get("scope")).toContain(
+      "https://www.googleapis.com/auth/calendar.events",
+    );
+    expect(
+      (
+        await upgradeManagement(
+          new NextRequest(`${origin}/api/google-calendar/connect`, {
+            method: "POST",
+            headers: { origin: "https://evil.invalid", cookie },
+          }),
+        )
+      ).status,
+    ).toBe(403);
+  });
+  it("allows disconnect while writes are disabled and clears selections and credentials", async () => {
+    const { cookie } = await intelligenceFixture();
+    vi.stubEnv("CALENDAR_WRITES_ENABLED", "false");
+    vi.mocked(fetch).mockResolvedValue(json({}));
+    expect((await disconnect(request("disconnect", { cookie }))).status).toBe(200);
+    expect((await db.query("SELECT * FROM calendar_preferences")).rows).toHaveLength(0);
+    expect(
+      (await db.query("SELECT encrypted_access_token,management_enabled FROM google_connections"))
+        .rows[0],
+    ).toEqual({ encrypted_access_token: null, management_enabled: false });
+  });
 });

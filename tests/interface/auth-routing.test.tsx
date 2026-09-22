@@ -1,48 +1,45 @@
 import React from "react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, expect, it, vi } from "vitest";
 const auth = vi.hoisted(() => ({
   read: vi.fn(),
+  settings: vi.fn(),
   redirect: vi.fn((path: string) => {
     throw new Error(`REDIRECT:${path}`);
   }),
 }));
 vi.mock("@/lib/auth/session.server", () => ({ readAppUser: auth.read }));
+vi.mock("@/lib/product/settings.server", () => ({ readSettings: auth.settings }));
+vi.mock("@/lib/product/entitlements.server", () => ({
+  getEntitlements: async () => ({ plan: "FREE" }),
+}));
 vi.mock("next/navigation", () => ({ redirect: auth.redirect }));
 import Today from "@/app/app/page";
-import Calendar from "@/app/app/calendar/page";
+import Layout from "@/app/app/layout";
 import Fasting from "@/app/app/fasting/page";
 import Routines from "@/app/app/routines/page";
-import Account from "@/app/app/account/page";
 import Sixth from "@/app/app/sixth/page";
 import Prayers from "@/app/app/prayers/page";
 beforeEach(() => {
   auth.read.mockReset();
+  auth.settings.mockReset();
   auth.redirect.mockClear();
 });
-describe("App authentication routing", () => {
-  for (const [route, Page] of [
-    ["", Today],
-    ["/calendar", Calendar],
-    ["/fasting", Fasting],
-    ["/routines", Routines],
-  ] as const) {
-    it(`redirects anonymous /app${route} to sign in with a return route`, async () => {
-      auth.read.mockResolvedValue(null);
-      await expect(Page()).rejects.toThrow(`REDIRECT:/app/account?next=/app${route}`);
-    });
-    it(`renders authenticated /app${route}`, async () => {
-      auth.read.mockResolvedValue({ id: "user", email: "user@example.com", plan: "FREE" });
-      expect(React.isValidElement(await Page())).toBe(true);
-      expect(auth.redirect).not.toHaveBeenCalled();
-    });
-  }
-  it("keeps account sign in reachable anonymously", async () => {
-    auth.read.mockResolvedValue(null);
-    expect(React.isValidElement(await Account())).toBe(true);
-    expect(auth.redirect).not.toHaveBeenCalled();
-  });
-  it("exposes prayer and Sixth screens without an authentication wrapper", () => {
-    expect(Sixth.name).toBe("SixthPage");
-    expect(Prayers.name).toBe("PrayersPage");
-  });
+it("protects every authenticated section through the shared layout", async () => {
+  auth.read.mockResolvedValue(null);
+  await expect(Layout({ children: <p>Private</p> })).rejects.toThrow("REDIRECT:/sign-in");
+});
+it("resumes incomplete setup and lets configured users return to Today", async () => {
+  auth.read.mockResolvedValue({ id: "user" });
+  auth.settings.mockResolvedValue({ onboarding: "prayer" });
+  await expect(Today()).rejects.toThrow("REDIRECT:/app/onboarding");
+  auth.settings.mockResolvedValue({ onboarding: "complete" });
+  expect(React.isValidElement(await Today())).toBe(true);
+});
+it.each([
+  [Fasting, "/app/automations"],
+  [Routines, "/app/automations"],
+  [Sixth, "/sixth"],
+  [Prayers, "/app"],
+] as const)("preserves legacy URLs with a canonical redirect", (Page, target) => {
+  expect(() => Page()).toThrow(`REDIRECT:${target}`);
 });

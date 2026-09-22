@@ -57,3 +57,24 @@ it("does not enable actions if account configuration cannot load", async () => {
   expect(await screen.findByText("Sign in to load automation settings.")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Preview Today" })).toBeDisabled();
 });
+
+it("shows paused timetable migration and editable live-provider settings", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn().mockResolvedValue(
+      Response.json({
+        config: DEFAULT_AUTOMATION,
+        state: { revision: 2, enabled: false, last_error_code: "PRAYER_SOURCE_REMOVED" },
+        entitlement: {},
+      }),
+    ),
+  );
+  render(<AutomationControl />);
+  expect(await screen.findByText(/The London Unified timetable was removed/)).toBeInTheDocument();
+  expect(screen.getByLabelText("Prayer provider")).toHaveValue("aladhan");
+  expect(screen.getByLabelText("City")).toHaveValue("London");
+  expect(screen.queryByRole("option", { name: /London Unified/ })).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Enable automation / start 7-day trial" }),
+  ).toBeDisabled();
+});

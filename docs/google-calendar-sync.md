@@ -29,11 +29,11 @@ copied from another night. Calendar-date iteration uses Temporal, and segmentati
 uses elapsed absolute time, preserving DST, month/year transitions and fractional-hour
 timezone offsets. The mathematical engine remains provider-independent.
 
-Supported sources are London Unified's published timetable, AlAdhan city lookup with
-its captured method/school/tuning settings, and islamic.app coordinate lookup with its
-captured method and timezone. Manual inputs and demonstration fixtures describe only
-one night and cannot supply a forward horizon. London Unified currently covers 2026
-only and cannot supply Fajr for 1 January 2027. Uncovered or unusable nights are reported
+Supported sources are AlAdhan city lookup with
+its captured method/school/tuning settings, and coordinate lookup with its
+captured method, timezone, and provider. New coordinate requests pin `provider: "aladhan"`;
+legacy sources without a provider retain islamic.app. Manual inputs and demonstration fixtures describe only
+one night and cannot supply a forward horizon. Uncovered or unusable nights are reported
 as `PRAYER_TIMES_UNAVAILABLE`; the server never substitutes another source or repeats
 old times. Provider availability and published coverage limit achievable sync results.
 
@@ -113,14 +113,20 @@ and [partial event updates](https://developers.google.com/workspace/calendar/api
 content type, and the exact configured same-origin `Origin` header. Maximum request
 body: 64 KiB. No new OAuth scope or credential is needed.
 
-Example body (London Unified):
+Example body (coordinates):
 
 ```json
 {
   "startDate": "2026-09-09",
   "mode": "fixed",
   "nights": 30,
-  "source": { "kind": "london-unified" },
+  "source": {
+    "kind": "coordinates",
+    "latitude": 51.5074,
+    "longitude": -0.1278,
+    "timeZone": "Europe/London",
+    "calculationMethod": 3
+  },
   "selected": ["last-third", "final-sixth", "prayer", "fajr"],
   "options": {
     "wakeBufferMinutes": 15,
@@ -318,3 +324,7 @@ that whitelist, preserves existing rows and IDs, and does not change preferences
 (their event-type array has no whitelist). Migration 003 was applied and verified
 on the `sixth-of-the-night` Production database on 2026-09-10, before this release.
 Apply it separately to any other database still using the original whitelist.
+
+## Static timetable removal
+
+Apply `009_remove_london_unified.sql` before deploying this removal. It changes new account preferences to AlAdhan, pauses accounts using the removed timetable, and supplies editable AlAdhan city settings for those paused accounts. Users must review their calculation method and explicitly resume automation. Existing calendar events remain unchanged. Legacy calendar sync requests using `london-unified` fail with `INVALID_REQUEST` until the user selects a supported source; no replacement provider is used automatically for those requests.

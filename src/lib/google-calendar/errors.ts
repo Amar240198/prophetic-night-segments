@@ -1,4 +1,8 @@
 export const GOOGLE_MESSAGES = {
+  PRO_REQUIRED: "This feature is available with Miqāt Pro.",
+  CALENDAR_WRITES_DISABLED: "Calendar management is disabled. Read access remains available.",
+  CALENDAR_READ_INCOMPLETE:
+    "Calendar coverage could not be loaded completely. Try a shorter range or reconnect.",
   CALENDAR_MAINTENANCE:
     "Calendar changes are temporarily unavailable during maintenance. Please try again shortly.",
   SERVICE_DATE_REQUIRED:

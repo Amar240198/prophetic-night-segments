@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { Temporal } from "@js-temporal/polyfill";
+import { requireFeature } from "@/lib/product/entitlements.server";
 import { readAppUser } from "@/lib/auth/session.server";
 import {
   assertSameOrigin,
@@ -16,7 +17,7 @@ import {
   loadAutomation,
   loadAccountRoutines,
 } from "@/lib/automation/schedule.server";
-import { startAutomationTrial } from "@/lib/automation/entitlement.server";
+import { automationEntitlement } from "@/lib/automation/entitlement.server";
 import { runAccountAutomation } from "@/lib/automation/run.server";
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -31,6 +32,11 @@ export async function POST(request: NextRequest) {
       tomorrow?: boolean;
       confirm?: boolean;
     };
+    if (body.action === "pause") {
+      await database()`UPDATE miqaat_automation SET enabled=false,updated_at=now() WHERE user_id=${user.id}`;
+      return privateResponse({ paused: true });
+    }
+    await requireFeature(user.id, "calendar-automation");
     const { config } = await loadAutomation(user.id);
     const now = Temporal.Now.instant();
     if (body.action === "preview") {
@@ -50,10 +56,6 @@ export async function POST(request: NextRequest) {
         ),
       );
     }
-    if (body.action === "pause") {
-      await database()`UPDATE miqaat_automation SET enabled=false,updated_at=now() WHERE user_id=${user.id}`;
-      return privateResponse({ paused: true });
-    }
     if (
       !["sync", "enable", "remove"].includes(body.action ?? "") ||
       (body.action === "remove" && body.confirm !== true)
@@ -63,7 +65,7 @@ export async function POST(request: NextRequest) {
     const session = await readSession(request);
     await bindCalendarAccount(session, user.id);
     if (body.action === "enable") {
-      const entitlement = await startAutomationTrial(user.id);
+      const entitlement = await automationEntitlement(user.id);
       if (!entitlement.allowed)
         return privateResponse(
           {

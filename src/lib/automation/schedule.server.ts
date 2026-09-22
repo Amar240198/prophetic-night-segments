@@ -38,8 +38,16 @@ export function parseAutomationConfig(value: unknown): AutomationConfig {
 }
 export async function loadAutomation(userId: string) {
   const rows = await database()`SELECT * FROM miqaat_automation WHERE user_id = ${userId}`;
+  const preferences =
+    await database()`SELECT prayer_configuration FROM miqaat_preferences WHERE user_id=${userId}`;
+  const prayer = preferences[0]?.prayer_configuration as
+    { source?: SyncSource; timezone?: string } | undefined;
+  const stored = rows.length ? (rows[0]!.configuration as AutomationConfig) : DEFAULT_AUTOMATION;
   return {
-    config: rows.length ? parseAutomationConfig(rows[0]!.configuration) : DEFAULT_AUTOMATION,
+    config: parseAutomationConfig({
+      ...stored,
+      ...(prayer?.source ? { source: prayer.source, timezone: prayer.timezone } : {}),
+    }),
     state: rows[0] ?? null,
   };
 }
@@ -87,7 +95,7 @@ export async function generateAutomationSchedule(
   if (!Number.isInteger(days) || days < 1 || days > 90) throw new Error("INVALID_HORIZON");
   const events: CalendarEvent[] = [];
   const issues: ScheduleIssue[] = [];
-  const fasts = fastingDates(startDate, days, config.fasting);
+  const fasts = fastingDates(startDate, days, config.fasting, config.fastingAnchor);
   for (const date of syncDates(startDate, days)) {
     try {
       const times = await load(config.source, date);
@@ -143,11 +151,13 @@ export async function generateAutomationSchedule(
                 ["dawud-prayer", "Dāwūd schedule — prayer", 3, 5],
                 ["dawud-final-sleep", "Dāwūd schedule — final sleep", 5, 6],
               ]
-            : [
-                ["night-midpoint", "Night midpoint", 3, 3],
-                ["last-third", "Last Third Begins", 4, 4],
-                ["final-sixth", "Final Sixth Begins", 5, 5],
-              ];
+            : config.qiyamWindow
+              ? [["qiyam", "Qiyām", config.qiyamWindow === "final-sixth" ? 5 : 4, 6]]
+              : [
+                  ["night-midpoint", "Night midpoint", 3, 3],
+                  ["last-third", "Last Third Begins", 4, 4],
+                  ["final-sixth", "Final Sixth Begins", 5, 5],
+                ];
         events.push(
           ...blocks.map(([id, title, start, end]) => ({
             id,
