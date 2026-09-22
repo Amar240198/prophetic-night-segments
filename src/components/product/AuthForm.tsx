@@ -2,8 +2,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { safeInternalPath } from "@/lib/auth/redirect";
 export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
   const router = useRouter();
+  const nextPath =
+    typeof window === "undefined"
+      ? "/app"
+      : safeInternalPath(new URLSearchParams(location.search).get("next"));
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [forgot, setForgot] = useState(false);
@@ -51,7 +56,7 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
               setMessage(body.message);
               return;
             }
-            router.push(mode === "reset" ? "/sign-in" : "/app");
+            router.push(mode === "reset" ? "/sign-in" : nextPath);
             router.refresh();
           } catch (e) {
             setMessage((e as Error).message);
@@ -98,7 +103,13 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
         </button>
       )}
       <p>
-        <Link href={mode === "signup" ? "/sign-in" : "/sign-up"}>
+        <Link
+          href={
+            mode === "signup"
+              ? `/sign-in?next=${encodeURIComponent(nextPath)}`
+              : `/sign-up?next=${encodeURIComponent(nextPath)}`
+          }
+        >
           {mode === "signup" ? "Already have an account? Sign in" : "Create an account"}
         </Link>
       </p>

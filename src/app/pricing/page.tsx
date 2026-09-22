@@ -18,7 +18,7 @@ export default function Page() {
         <section className="app-card">
           <h2>Free</h2>
           <p>Prayer times, Sixth of the Night, night information and manual calendar export.</p>
-          <Link className="secondary-button" href="/sign-up">
+          <Link className="secondary-button" href="/get-started">
             Get started free
           </Link>
         </section>
@@ -35,7 +35,7 @@ export default function Page() {
             Calendar analysis and recommendations use read access. Automatic calendar changes are
             currently unavailable.
           </p>
-          <BillingButton>Upgrade to Miqāt Pro</BillingButton>
+          <BillingButton autoStart>Upgrade to Miqāt Pro</BillingButton>
         </section>
       </div>
       <footer>

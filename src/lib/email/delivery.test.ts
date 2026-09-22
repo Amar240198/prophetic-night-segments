@@ -27,6 +27,7 @@ it("requires encrypted SMTP and sends the reset link through the configured prov
   );
   expect(smtp.sendMail).toHaveBeenCalledWith({ ...message, from: "support@example.test" });
 });
+
 it("fails closed without mail configuration or with an unsafe origin", () => {
   vi.stubEnv("SMTP_HOST", "");
   expect(() => emailDelivery()).toThrow("EMAIL_NOT_CONFIGURED");

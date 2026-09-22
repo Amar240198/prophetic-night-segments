@@ -24,8 +24,11 @@ export function emailDelivery(): EmailDelivery {
   };
 }
 export function resetOrigin() {
-  const raw = process.env.APP_ORIGIN;
-  if (!raw) throw new Error("EMAIL_NOT_CONFIGURED");
+  const raw =
+    process.env.APP_ORIGIN ??
+    (process.env.NODE_ENV === "production"
+      ? "https://sixth-of-the-night.vercel.app"
+      : "http://localhost:3000");
   const url = new URL(raw);
   if (
     url.username ||

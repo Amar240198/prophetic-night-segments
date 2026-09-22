@@ -17,7 +17,7 @@ export default function Home() {
           prayer windows and plan protected worship time.
         </p>
         <div className="landing-actions">
-          <Link className="primary-button" href="/sign-up">
+          <Link className="primary-button" href="/get-started">
             Get started
           </Link>
           <Link className="secondary-button" href="/pricing">

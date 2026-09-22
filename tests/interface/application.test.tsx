@@ -20,6 +20,7 @@ vi.mock("@/components/product/ProductContext", async (importOriginal) => ({
   useProduct: () => context.value,
 }));
 import Home from "@/app/page";
+import GetStarted from "@/app/get-started/page";
 import { AppShell } from "@/components/app/AppShell";
 import { TodayPage } from "@/components/app/TodayPage";
 import { CalendarPage } from "@/components/app/CalendarPage";
@@ -30,6 +31,7 @@ import { RoutinesCard } from "@/components/RoutinesCard";
 import { AuthForm } from "@/components/product/AuthForm";
 import { SettingsPage } from "@/components/product/SettingsPage";
 import { PrayerSettings } from "@/components/product/PrayerSettings";
+import { BillingButton } from "@/components/product/BillingButton";
 const day = {
   date: "2026-09-18",
   timezone: "Europe/London",
@@ -178,8 +180,31 @@ it("presents one product and the separately available free calculator", () => {
   expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(
     "Your calendar, automatically aligned with Salah.",
   );
-  expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/sign-up");
+  expect(screen.getByRole("link", { name: "Get started" })).toHaveAttribute("href", "/get-started");
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
+});
+it("offers a public choice before entering the free calculator", () => {
+  render(<GetStarted />);
+  expect(screen.getByRole("link", { name: "Continue for Free" })).toHaveAttribute("href", "/sixth");
+  expect(screen.getByRole("link", { name: "Sign In / Create Account" })).toHaveAttribute(
+    "href",
+    "/sign-in",
+  );
+});
+it("sends a guest upgrade to sign-in with a safe return intent", async () => {
+  window.history.pushState({}, "", "/pricing");
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(
+      async () =>
+        new Response(JSON.stringify({ error: { message: "Sign in required" } }), { status: 401 }),
+    ),
+  );
+  render(<BillingButton>Upgrade to Miqāt Pro</BillingButton>);
+  fireEvent.click(screen.getByRole("button", { name: "Upgrade to Miqāt Pro" }));
+  await waitFor(() =>
+    expect(navigation.push).toHaveBeenCalledWith("/sign-in?next=%2Fpricing%3Fupgrade%3D1"),
+  );
 });
 it("has exactly five primary destinations on desktop and mobile", () => {
   navigation.path = "/app/settings";
