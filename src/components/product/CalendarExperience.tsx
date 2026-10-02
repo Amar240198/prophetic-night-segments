@@ -1,4 +1,6 @@
 "use client";
+import { PRAYER_LABELS } from "@/lib/i18n/labels";
+import { T, useI18n } from "@/components/i18n/LocaleProvider";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { productApi, useProduct } from "./ProductContext";
@@ -24,6 +26,7 @@ type Preview = {
   writesEnabled: boolean;
 };
 export function CalendarExperience() {
+  const { t } = useI18n();
   const { state, day } = useProduct();
   const [timeline, setTimeline] = useState<DailyTimeline | null>(null),
     [connection, setConnection] = useState<CalendarSettingsData | null>(null),
@@ -70,9 +73,19 @@ export function CalendarExperience() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Synchronise initial state from an external service or browser storage.
     void refresh();
   }, [refresh, sourceKey]);
-  if (!state) return <p role="status">Loading your schedule…</p>;
+  if (!state)
+    return (
+      <p role="status">
+        <T>{"Loading your schedule…"}</T>
+      </p>
+    );
   if (!pro) return <Paywall />;
-  if (!day) return <p>Load your prayer times to see calendar recommendations.</p>;
+  if (!day)
+    return (
+      <p>
+        <T>{"Load your prayer times to see calendar recommendations."}</T>
+      </p>
+    );
   const time = (value: string) =>
     new Intl.DateTimeFormat("en-GB", {
       timeZone: day.timezone,
@@ -98,27 +111,41 @@ export function CalendarExperience() {
     }
   }
   return (
-    <section className="app-card" aria-label="Calendar intelligence">
-      <h2>Salah and your schedule</h2>
-      {status === "loading" && <p role="status">Loading your calendar…</p>}
+    <section className="app-card" aria-label={t("Calendar intelligence")}>
+      <h2>
+        <T>{"Salah and your schedule"}</T>
+      </h2>
+      {status === "loading" && (
+        <p role="status">
+          <T>{"Loading your calendar…"}</T>
+        </p>
+      )}
       {status === "disconnected" && (
         <>
-          <p>Connect your calendar to see Salah alongside your schedule.</p>
+          <p>
+            <T>{"Connect your calendar to see Salah alongside your schedule."}</T>
+          </p>
           <Link className="primary-button" href="/app/settings#calendar">
-            Connect Google Calendar
+            <T>{"Connect Google Calendar"}</T>
           </Link>
         </>
       )}
       {status === "not-selected" && (
         <>
-          <p>No calendar selected. Choose which calendars Miqāt should analyse.</p>
-          <Link href="/app/settings#calendar">Choose calendars</Link>
+          <p>
+            <T>{"No calendar selected. Choose which calendars Miqāt should analyse."}</T>
+          </p>
+          <Link href="/app/settings#calendar">
+            <T>{"Choose calendars"}</T>
+          </Link>
         </>
       )}
       {status === "unavailable" && (
         <p role="status">
-          Your calendar could not be checked. Prayer times remain available.{" "}
-          <Link href="/app/settings#calendar">Check connection</Link>
+          <T>{"Your calendar could not be checked. Prayer times remain available."}</T>{" "}
+          <Link href="/app/settings#calendar">
+            <T>{"Check connection"}</T>
+          </Link>
         </p>
       )}
       {timeline && (
@@ -135,7 +162,7 @@ export function CalendarExperience() {
               })),
               ...timeline.analyses.map((a) => ({
                 id: a.prayer,
-                title: a.prayer,
+                title: <T>{PRAYER_LABELS[a.prayer]}</T>,
                 start: a.prayerWindow.start,
                 end: a.prayerWindow.end,
                 kind: "Prayer window",
@@ -149,24 +176,37 @@ export function CalendarExperience() {
                   </time>
                   <div>
                     <strong>{e.title}</strong>
-                    <span>{e.kind}</span>
+                    <span>
+                      <T>{e.kind}</T>
+                    </span>
                   </div>
                 </li>
               ))}
           </ol>
-          {!timeline.events.length && <p>No calendar events in this period.</p>}
+          {!timeline.events.length && (
+            <p>
+              <T>{"No calendar events in this period."}</T>
+            </p>
+          )}
           {timeline.analyses.map((a) => (
             <section className="prayer-analysis" key={a.prayer}>
-              <h3 className="capitalize">{a.prayer}</h3>
-              <p>{labels[a.status]}</p>
+              <h3 className="capitalize">
+                <T>{PRAYER_LABELS[a.prayer]}</T>
+              </h3>
+              <p>
+                <T>{labels[a.status]}</T>
+              </p>
               <p>{a.explanation}</p>
               {a.recommendedWindows.slice(0, 1).map((r) => (
                 <div key={r.start}>
                   <p>
-                    Recommended: {time(r.start)} – {time(r.end)}
+                    <T>{"Recommended: "}</T>
+                    {time(r.start)} – {time(r.end)}
                   </p>
                   <details>
-                    <summary>Why this recommendation?</summary>
+                    <summary>
+                      <T>{"Why this recommendation?"}</T>
+                    </summary>
                     <ul>
                       {r.reasons.map((reason) => (
                         <li key={reason}>{reason}</li>
@@ -176,7 +216,9 @@ export function CalendarExperience() {
                 </div>
               ))}
               <details>
-                <summary>Available windows and conflicts</summary>
+                <summary>
+                  <T>{"Available windows and conflicts"}</T>
+                </summary>
                 {a.availableWindows.map((w) => (
                   <p key={w.start}>
                     {time(w.start)} – {time(w.end)}
@@ -193,26 +235,35 @@ export function CalendarExperience() {
                   disabled={busy || !connection?.destination}
                   onClick={() => void protect(a.prayer)}
                 >
-                  Protect {a.prayer}
+                  <T>{"Protect "}</T>
+                  <T>{PRAYER_LABELS[a.prayer]}</T>
                 </button>
               )}
             </section>
           ))}
           {!connection?.destination && (
-            <Link href="/app/settings#calendar">Choose a destination calendar in Settings</Link>
+            <Link href="/app/settings#calendar">
+              <T>{"Choose a destination calendar in Settings"}</T>
+            </Link>
           )}
         </>
       )}
       {preview && (
-        <section aria-label="Protected prayer block preview">
-          <h3>Review protected {preview.proposal.prayer} time</h3>
+        <section aria-label={t("Protected prayer block preview")}>
+          <h3>
+            <T>{"Review protected "}</T>
+            <T>{PRAYER_LABELS[preview.proposal.prayer]}</T>
+            <T>{" time"}</T>
+          </h3>
           <p>
             {time(preview.proposal.start)} – {time(preview.proposal.end)}
           </p>
           <p>
-            {preview.writesEnabled
-              ? "Confirm this change to your Miqāt prayer block."
-              : "Calendar management is currently unavailable. This preview does not change your calendar."}
+            <T>
+              {preview.writesEnabled
+                ? "Confirm this change to your Miqāt prayer block."
+                : "Calendar management is currently unavailable. This preview does not change your calendar."}
+            </T>
           </p>
           <button
             disabled={busy || !preview.writesEnabled || !connection?.managementEnabled}
@@ -240,16 +291,28 @@ export function CalendarExperience() {
               }
             }}
           >
-            Confirm prayer block
+            <T>{"Confirm prayer block"}</T>
           </button>
-          <button onClick={() => setPreview(null)}>Cancel</button>
+          <button onClick={() => setPreview(null)}>
+            <T>{"Cancel"}</T>
+          </button>
         </section>
       )}
-      {message && <p role="alert">{message}</p>}
+      {message && (
+        <p role="alert">
+          <T>{message}</T>
+        </p>
+      )}
       <div className="form-actions">
-        <button onClick={() => void refresh()}>Refresh schedule</button>
-        <Link href="/app/settings#calendar">Manage calendars</Link>
-        <Link href="/app/automations">Manage automation</Link>
+        <button onClick={() => void refresh()}>
+          <T>{"Refresh schedule"}</T>
+        </button>
+        <Link href="/app/settings#calendar">
+          <T>{"Manage calendars"}</T>
+        </Link>
+        <Link href="/app/automations">
+          <T>{"Manage automation"}</T>
+        </Link>
       </div>
     </section>
   );

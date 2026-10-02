@@ -1,3 +1,7 @@
+import { cookies } from "next/headers";
+import { LocaleProvider } from "@/components/i18n/LocaleProvider";
+import { SharedHeader } from "@/components/app/SharedHeader";
+import { LOCALE_COOKIE, locales, parseLocale } from "@/lib/i18n/config";
 import type { Metadata } from "next";
 import "./globals.css";
 import { Analytics } from "@vercel/analytics/next";
@@ -7,15 +11,19 @@ export const metadata: Metadata = {
   description: "Prayer times, Qiyām, fasting, routines and calendar automation — in one place.",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = parseLocale((await cookies()).get(LOCALE_COOKIE)?.value);
   return (
-    <html lang="en" className="h-full antialiased">
+    <html lang={locale} dir={locales[locale].dir} className="h-full antialiased">
       <body className="min-h-full flex flex-col">
-        {children}
+        <LocaleProvider initialLocale={locale}>
+          <SharedHeader />
+          {children}
+        </LocaleProvider>
         <Analytics />
       </body>
     </html>

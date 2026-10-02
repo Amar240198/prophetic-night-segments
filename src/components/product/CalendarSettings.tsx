@@ -1,4 +1,5 @@
 "use client";
+import { T, useI18n } from "@/components/i18n/LocaleProvider";
 import { useCallback, useEffect, useState } from "react";
 import type { Calendar } from "@/lib/miqat/model";
 import { productApi } from "./ProductContext";
@@ -10,6 +11,7 @@ export interface CalendarSettingsData {
   writesEnabled: boolean;
 }
 export function CalendarSettings({ canAnalyse = true }: { canAnalyse?: boolean }) {
+  const { t } = useI18n();
   const [data, setData] = useState<CalendarSettingsData | null>(null),
     [selected, setSelected] = useState<string[]>([]),
     [destination, setDestination] = useState(""),
@@ -71,26 +73,38 @@ export function CalendarSettings({ canAnalyse = true }: { canAnalyse?: boolean }
     }
   }
   return (
-    <section className="product-form" aria-label="Calendar connection">
+    <section className="product-form" aria-label={t("Calendar connection")}>
       {loading ? (
-        <p role="status">Checking calendar connection…</p>
+        <p role="status">
+          <T>{"Checking calendar connection…"}</T>
+        </p>
       ) : !data ? (
         <>
-          <p>Connect your calendar to see Salah alongside your schedule.</p>
+          <p>
+            <T>{"Connect your calendar to see Salah alongside your schedule."}</T>
+          </p>
           {canAnalyse && (
             <a className="primary-button" href="/api/google-calendar/connect">
-              Connect Google Calendar
+              <T>{"Connect Google Calendar"}</T>
             </a>
           )}
         </>
       ) : (
         <>
-          <p>Connected as {email || "your Google account"}</p>
-          <p>Read access: {canAnalyse ? "Connected" : "Analysis requires Miqāt Pro"}</p>
+          <p>
+            <T>{"Connected as "}</T>
+            {email ? <bdi>{email}</bdi> : <T>{"your Google account"}</T>}
+          </p>
+          <p>
+            <T>{"Read access: "}</T>
+            <T>{canAnalyse ? "Connected" : "Analysis requires Miqāt Pro"}</T>
+          </p>
           {canAnalyse && (
             <>
               <fieldset>
-                <legend>Calendars Miqāt analyses</legend>
+                <legend>
+                  <T>{"Calendars Miqāt analyses"}</T>
+                </legend>
                 {data.calendars.map((c) => (
                   <label key={c.id}>
                     <input
@@ -105,14 +119,16 @@ export function CalendarSettings({ canAnalyse = true }: { canAnalyse?: boolean }
                       }
                     />
                     {c.title}
-                    {c.isPrimary ? " (Primary)" : ""}
+                    <T>{c.isPrimary ? " (Primary)" : ""}</T>
                   </label>
                 ))}
               </fieldset>
               <label>
-                Destination calendar
+                <T>{"Destination calendar"}</T>
                 <select value={destination} onChange={(e) => setDestination(e.target.value)}>
-                  <option value="">Choose a destination</option>
+                  <option value="">
+                    <T>{"Choose a destination"}</T>
+                  </option>
                   {data.calendars
                     .filter((c) => c.isWritable)
                     .map((c) => (
@@ -135,25 +151,34 @@ export function CalendarSettings({ canAnalyse = true }: { canAnalyse?: boolean }
                   })
                 }
               >
-                Save calendar choices
+                <T>{"Save calendar choices"}</T>
               </button>
               <p>
-                Calendar management: {data.managementEnabled ? "Permission granted" : "Not enabled"}
+                <T>{"Calendar management: "}</T>
+                <T>{data.managementEnabled ? "Permission granted" : "Not enabled"}</T>
               </p>
               <p>
-                {data.writesEnabled
-                  ? "Miqāt can manage its own calendar blocks when you enable automation."
-                  : "Calendar management is currently unavailable. Your calendar can still be analysed."}
+                <T>
+                  {data.writesEnabled
+                    ? "Miqāt can manage its own calendar blocks when you enable automation."
+                    : "Calendar management is currently unavailable. Your calendar can still be analysed."}
+                </T>
               </p>
               {!data.managementEnabled && (
                 <form method="post" action="/api/google-calendar/connect">
-                  <button disabled={!data.writesEnabled}>Allow calendar management</button>
+                  <button disabled={!data.writesEnabled}>
+                    <T>{"Allow calendar management"}</T>
+                  </button>
                 </form>
               )}
             </>
           )}
           <div className="form-actions">
-            {canAnalyse && <a href="/api/google-calendar/connect">Reconnect Google Calendar</a>}
+            {canAnalyse && (
+              <a href="/api/google-calendar/connect">
+                <T>{"Reconnect Google Calendar"}</T>
+              </a>
+            )}
             <button
               disabled={busy}
               onClick={() =>
@@ -164,15 +189,22 @@ export function CalendarSettings({ canAnalyse = true }: { canAnalyse?: boolean }
                 })
               }
             >
-              Disconnect Google Calendar
+              <T>{"Disconnect Google Calendar"}</T>
             </button>
           </div>
         </>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p role="status">
+          <T>{message}</T>
+        </p>
+      )}
       <p>
-        Miqāt reads events from the calendars you select to find prayer windows. It never changes
-        your ordinary meetings.
+        <T>
+          {
+            "Miqāt reads events from the calendars you select to find prayer windows. It never changes your ordinary meetings."
+          }
+        </T>
       </p>
     </section>
   );

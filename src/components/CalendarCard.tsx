@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 
 import type { SyncContext } from "@/lib/google-calendar/sync";
 import Link from "next/link";
@@ -36,23 +37,29 @@ export function CalendarCard({
       className="border border-white/10 bg-[#0c2229] p-5 sm:p-9"
       aria-labelledby="calendar-title"
     >
-      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">CALENDAR</p>
+      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
+        <T>{"CALENDAR"}</T>
+      </p>
       <h2 id="calendar-title" className="mt-3 font-serif text-3xl">
-        Add to Calendar
+        <T>{"Add to Calendar"}</T>
       </h2>
-      <p className="mt-3 text-[#c8d4d0]">Plan tonight around Qiyam / Tahajjud.</p>
+      <p className="mt-3 text-[#c8d4d0]">
+        <T>{"Plan tonight around Qiyam / Tahajjud."}</T>
+      </p>
       <p className="mt-2 text-sm text-[#9baca7]">
-        Suggested prayer window:{" "}
-        {dawudSelected ? "Dāwūd pattern (Parts 4–5)" : "last third (Parts 5–6)"}. Times shown in{" "}
-        {result.input.timeZone}.
+        <T>{"Suggested prayer window:"}</T>{" "}
+        <T>{dawudSelected ? "Dāwūd pattern (Parts 4–5)" : "last third (Parts 5–6)"}</T>
+        <T>{". Times shown in"}</T> {result.input.timeZone}.
       </p>
       {!valid && (
         <p id="calendar-buffer-error" role="alert" className="mt-3 text-red-300">
-          Enter a whole number of minutes from 0 to 1440.
+          <T>{"Enter a whole number of minutes from 0 to 1440."}</T>
         </p>
       )}
       <fieldset className="mt-5 grid gap-3">
-        <legend className="mb-3">Events to add</legend>
+        <legend className="mb-3">
+          <T>{"Events to add"}</T>
+        </legend>
         {events.map((event) => (
           <label key={event.id} className="flex items-center gap-3 border border-white/10 p-3">
             <input
@@ -67,11 +74,13 @@ export function CalendarCard({
               }
             />
             <span>
-              {event.title}
+              <T>{event.title}</T>
               <span className="mt-1 block text-xs text-[#9baca7]">
-                {!valid && event.id === "wake"
-                  ? "Enter a valid buffer to preview"
-                  : formatCalendarTime(event.start, event.timeZone)}
+                {!valid && event.id === "wake" ? (
+                  <T>{"Enter a valid buffer to preview"}</T>
+                ) : (
+                  formatCalendarTime(event.start, event.timeZone)
+                )}
                 {event.start !== event.end && ` – ${formatCalendarTime(event.end, event.timeZone)}`}
               </span>
             </span>
@@ -101,16 +110,25 @@ export function CalendarCard({
           }
         }}
       >
-        Download calendar file
+        <T>{"Download calendar file"}</T>
       </button>
-      {exportError && <p role="alert">{exportError}</p>}
-      <p className="mt-4">Want this to stay aligned with your calendar?</p>
+      {exportError && (
+        <p role="alert">
+          <T>{exportError}</T>
+        </p>
+      )}
+      <p className="mt-4">
+        <T>{"Want this to stay aligned with your calendar?"}</T>
+      </p>
       <Link className="secondary-button" href="/app">
-        Use Miqāt
+        <T>{"Use Miqāt"}</T>
       </Link>
       <p className="mt-4 text-xs leading-5 text-[#8ea29d]">
-        One-night export for Apple Calendar, Google Calendar, Outlook and other .ics applications.
-        Set notifications in your calendar app. Recalculate and export again if prayer times change.
+        <T>
+          {
+            "One-night export for Apple Calendar, Google Calendar, Outlook and other .ics applications. Set notifications in your calendar app. Recalculate and export again if prayer times change."
+          }
+        </T>
       </p>
     </section>
   );

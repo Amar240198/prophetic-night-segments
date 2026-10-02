@@ -1,4 +1,6 @@
 "use client";
+import { PRAYER_LABELS } from "@/lib/i18n/labels";
+import { T } from "@/components/i18n/LocaleProvider";
 import {
   ALADHAN_CALCULATION_METHODS,
   type AlAdhanCalculationMethod,
@@ -6,6 +8,7 @@ import {
 import Link from "next/link";
 import { useProduct } from "../product/ProductContext";
 import { CalendarExperience } from "../product/CalendarExperience";
+import { QaylulaCard } from "./QaylulaCard";
 import { PageHeader, Card } from "./ui";
 export function TodayPage() {
   const { state, day, dayError, error, reloadDay } = useProduct();
@@ -20,52 +23,76 @@ export function TodayPage() {
       <PageHeader
         title="Today"
         description={
-          day
-            ? new Intl.DateTimeFormat("en-GB", {
+          day ? (
+            <time dateTime={day.night.night.start}>
+              {new Intl.DateTimeFormat("en-GB", {
                 dateStyle: "full",
                 timeZone: day.timezone,
-              }).format(new Date(day.night.night.start))
-            : "Your day around Salah"
+              }).format(new Date(day.night.night.start))}
+            </time>
+          ) : (
+            "Your day around Salah"
+          )
         }
       />
       {state?.settings.onboarding !== "complete" && (
         <p>
-          <Link href="/app/onboarding">Finish setup</Link> — keep your existing settings and
-          complete what is missing.
+          <Link href="/app/onboarding">
+            <T>{"Finish setup"}</T>
+          </Link>
+          <T>{" — keep your existing settings and complete what is missing."}</T>
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          <T>{error}</T>
+        </p>
+      )}
       {dayError && (
         <p role="alert">
-          {dayError} <button onClick={() => void reloadDay()}>Try again</button>{" "}
-          <Link href="/sixth">Free manual calculator</Link>
+          <T>{dayError}</T>{" "}
+          <button onClick={() => void reloadDay()}>
+            <T>{"Try again"}</T>
+          </button>{" "}
+          <Link href="/sixth">
+            <T>{"Free manual calculator"}</T>
+          </Link>
         </p>
       )}
       {!day && !dayError && (
         <p role="status">
-          {state && !state.settings.configured
-            ? "Confirm your prayer settings to see your day."
-            : "Loading prayer times…"}
+          <T>
+            {state && !state.settings.configured
+              ? "Confirm your prayer settings to see your day."
+              : "Loading prayer times…"}
+          </T>
         </p>
       )}
+      <QaylulaCard schedule={day?.schedule ?? null} />
       {day && (
         <>
           <Card title="Your prayer day">
             <p>
-              {state?.settings.prayer.source.kind === "aladhan"
-                ? `${state.settings.prayer.source.options.city}, ${state.settings.prayer.source.options.country}`
-                : "Your precise location"}{" "}
+              {state?.settings.prayer.source.kind === "aladhan" ? (
+                <bdi>{`${state.settings.prayer.source.options.city}, ${state.settings.prayer.source.options.country}`}</bdi>
+              ) : (
+                <T>{"Your precise location"}</T>
+              )}{" "}
               · {day.timezone}
             </p>
             <p>
-              {day.schedule?.source} · Calculation method{" "}
+              {day.schedule?.source}
+              <T>{" · Calculation method"}</T>{" "}
               {ALADHAN_CALCULATION_METHODS[
                 (state?.settings.prayer.source.kind === "aladhan"
                   ? state.settings.prayer.source.options.calculationMethod
                   : (state?.settings.prayer.source.calculationMethod ??
                     3)) as AlAdhanCalculationMethod
               ] ?? "Saved calculation method"}{" "}
-              · <Link href="/app/settings">Change in Settings</Link>
+              ·{" "}
+              <Link href="/app/settings">
+                <T>{"Change in Settings"}</T>
+              </Link>
             </p>
             {day.schedule ? (
               <ol className="day-timeline">
@@ -73,17 +100,19 @@ export function TodayPage() {
                   <li key={prayer}>
                     <time>{time(day.schedule![prayer])}</time>
                     <strong className="capitalize">
-                      {prayer}
-                      {prayer === "sunrise" ? " · Sunrise (informational)" : ""}
+                      <T>{PRAYER_LABELS[prayer]}</T>
+                      <T>{prayer === "sunrise" ? " · Sunrise (informational)" : ""}</T>
                     </strong>
                   </li>
                 ))}
               </ol>
             ) : (
               <p>
-                This saved provider supplies night boundaries only.{" "}
-                <Link href="/app/settings">Review prayer settings</Link> to load the full prayer
-                day.
+                <T>{"This saved provider supplies night boundaries only."}</T>{" "}
+                <Link href="/app/settings">
+                  <T>{"Review prayer settings"}</T>
+                </Link>
+                <T>{" to load the full prayer day."}</T>
               </p>
             )}
           </Card>
@@ -96,29 +125,39 @@ export function TodayPage() {
                 ["Final sixth", day.night.dawudPattern.finalSleep.start],
               ].map(([label, value]) => (
                 <div key={label}>
-                  <dt>{label}</dt>
+                  <dt>
+                    <T>{label}</T>
+                  </dt>
                   <dd>{time(value)}</dd>
                 </div>
               ))}
             </dl>
             <p>
-              Qiyām:{" "}
-              {state?.settings.automation.modules.includes("night")
-                ? state.settings.automation.night === "dawud"
-                  ? "Dāwūd prayer period · Parts 4–5"
-                  : state.settings.automation.qiyamWindow === "final-sixth"
-                    ? "Final sixth"
-                    : "Last third"
-                : "Not scheduled"}
+              <T>{"Qiyām:"}</T>{" "}
+              <T>
+                {state?.settings.automation.modules.includes("night")
+                  ? state.settings.automation.night === "dawud"
+                    ? "Dāwūd prayer period · Parts 4–5"
+                    : state.settings.automation.qiyamWindow === "final-sixth"
+                      ? "Final sixth"
+                      : "Last third"
+                  : "Not scheduled"}
+              </T>
             </p>
             <p>
-              {day.fasting.length
-                ? "Fasting today according to your saved programme."
-                : "No fast scheduled today."}
+              <T>
+                {day.fasting.length
+                  ? "Fasting today according to your saved programme."
+                  : "No fast scheduled today."}
+              </T>
             </p>
             <div className="form-actions">
-              <Link href="/app/automations">Manage automation</Link>
-              <Link href="/sixth">Detailed Sixth of the Night calculator</Link>
+              <Link href="/app/automations">
+                <T>{"Manage automation"}</T>
+              </Link>
+              <Link href="/sixth">
+                <T>{"Detailed Sixth of the Night calculator"}</T>
+              </Link>
             </div>
           </Card>
         </>
@@ -129,7 +168,9 @@ export function TodayPage() {
 export function CalendarSummary() {
   return (
     <p>
-      <Link href="/app/settings#calendar">Manage calendar connection in Settings</Link>
+      <Link href="/app/settings#calendar">
+        <T>{"Manage calendar connection in Settings"}</T>
+      </Link>
     </p>
   );
 }

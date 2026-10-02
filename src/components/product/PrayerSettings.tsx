@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import { useState } from "react";
 import type { PrayerPreferences } from "@/lib/product/settings";
 import {
@@ -90,11 +91,14 @@ export function PrayerSettings({
       className="product-form"
     >
       <p>
-        Prayer times supplied by AlAdhan. Choose the calculation method used by your local
-        authority.
+        <T>
+          {
+            "Prayer times supplied by AlAdhan. Choose the calculation method used by your local authority."
+          }
+        </T>
       </p>
       <label>
-        Location entry
+        <T>{"Location entry"}</T>
         <select
           value={source.kind}
           onChange={(e) =>
@@ -123,14 +127,18 @@ export function PrayerSettings({
             })
           }
         >
-          <option value="aladhan">City</option>
-          <option value="coordinates">Precise or manually entered coordinates</option>
+          <option value="aladhan">
+            <T>{"City"}</T>
+          </option>
+          <option value="coordinates">
+            <T>{"Precise or manually entered coordinates"}</T>
+          </option>
         </select>
       </label>
       {options &&
         (["city", "country"] as const).map((field) => (
           <label key={field}>
-            {field === "city" ? "City" : "Country"}
+            <T>{field === "city" ? "City" : "Country"}</T>
             <input
               required
               maxLength={100}
@@ -148,7 +156,7 @@ export function PrayerSettings({
         <>
           {(["latitude", "longitude"] as const).map((field) => (
             <label key={field}>
-              {field === "latitude" ? "Latitude" : "Longitude"}
+              <T>{field === "latitude" ? "Latitude" : "Longitude"}</T>
               <input
                 required
                 type="number"
@@ -171,10 +179,10 @@ export function PrayerSettings({
         </>
       )}
       <button type="button" onClick={locate} disabled={busy}>
-        Use my precise location
+        <T>{"Use my precise location"}</T>
       </button>
       <label>
-        Timezone
+        <T>{"Timezone"}</T>
         <input
           required
           value={value.timezone}
@@ -189,7 +197,7 @@ export function PrayerSettings({
         />
       </label>
       <label>
-        Calculation method
+        <T>{"Calculation method"}</T>
         <select value={method} onChange={(e) => updateMethod(Number(e.target.value))}>
           {Object.entries(ALADHAN_CALCULATION_METHODS)
             .filter(([id]) => id !== "99")
@@ -201,7 +209,7 @@ export function PrayerSettings({
         </select>
       </label>
       <label>
-        Asr calculation
+        <T>{"Asr calculation"}</T>
         <select
           value={options?.school ?? (source.kind === "coordinates" ? (source.school ?? 0) : 0)}
           onChange={(e) =>
@@ -217,15 +225,21 @@ export function PrayerSettings({
             })
           }
         >
-          <option value="0">Standard</option>
-          <option value="1">Hanafi</option>
+          <option value="0">
+            <T>{"Standard"}</T>
+          </option>
+          <option value="1">
+            <T>{"Hanafi"}</T>
+          </option>
         </select>
       </label>
       {options && (
         <details>
-          <summary>Advanced adjustments</summary>
+          <summary>
+            <T>{"Advanced adjustments"}</T>
+          </summary>
           <label>
-            High-latitude adjustment
+            <T>{"High-latitude adjustment"}</T>
             <select
               value={options.latitudeAdjustmentMethod ?? 3}
               onChange={(e) =>
@@ -241,13 +255,19 @@ export function PrayerSettings({
                 })
               }
             >
-              <option value="1">Middle of the night</option>
-              <option value="2">One seventh</option>
-              <option value="3">Angle based</option>
+              <option value="1">
+                <T>{"Middle of the night"}</T>
+              </option>
+              <option value="2">
+                <T>{"One seventh"}</T>
+              </option>
+              <option value="3">
+                <T>{"Angle based"}</T>
+              </option>
             </select>
           </label>
           <label>
-            Prayer adjustments in minutes (nine comma-separated values)
+            <T>{"Prayer adjustments in minutes (nine comma-separated values)"}</T>
             <input
               value={(options.tune ?? Array(9).fill(0)).join(",")}
               onChange={(e) =>
@@ -276,9 +296,13 @@ export function PrayerSettings({
           </label>
         </details>
       )}
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p role="status">
+          <T>{message}</T>
+        </p>
+      )}
       <button className="primary-button" disabled={busy}>
-        {busy ? "Saving…" : buttonLabel}
+        <T>{busy ? "Saving…" : buttonLabel}</T>
       </button>
     </form>
   );

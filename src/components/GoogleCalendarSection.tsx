@@ -1,4 +1,5 @@
 "use client";
+import { T, useI18n } from "@/components/i18n/LocaleProvider";
 
 import { recordCalendarSync } from "./app/calendarStatus";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -52,6 +53,7 @@ export function GoogleCalendarSection({
   moduleTitle?: string;
   defaultSelected?: string[];
 }) {
+  const { t } = useI18n();
   const [connection, setConnection] = useState<Connection | null>(null);
   const [connecting, setConnecting] = useState(false);
   const [reviewing, setReviewing] = useState(false);
@@ -522,18 +524,20 @@ export function GoogleCalendarSection({
       </h3>
       {!connection && !error && (
         <p role="status" className="mt-3 text-sm">
-          Checking connection…
+          <T>{"Checking connection…"}</T>
         </p>
       )}
       {connection?.configured === false && (
-        <p className="mt-3 text-sm text-[#9baca7]">{GOOGLE_MESSAGES.NOT_CONFIGURED}</p>
+        <p className="mt-3 text-sm text-[#9baca7]">{t(GOOGLE_MESSAGES.NOT_CONFIGURED)}</p>
       )}
       {connection?.connected ? (
         <>
           <p role="status" className="mt-3 text-sm">
-            Google Calendar connected
+            <T>{"Google Calendar connected"}</T>
           </p>
-          <p className="mt-1 text-sm">Connected as: {connection.email}</p>
+          <p className="mt-1 text-sm">
+            <T>{"Connected as:"}</T> <bdi>{connection.email}</bdi>
+          </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <button
               type="button"
@@ -542,7 +546,14 @@ export function GoogleCalendarSection({
               onClick={() => setReviewing(!reviewing)}
               aria-expanded={reviewing}
             >
-              Add {moduleTitle} to Calendar
+              {t("Add {module} to Calendar", {
+                module:
+                  moduleTitle === "All Prayers"
+                    ? t("All Prayers")
+                    : moduleTitle === "Qiyam / Tahajjud Plan"
+                      ? t("Qiyam / Tahajjud Plan")
+                      : moduleTitle,
+              })}
             </button>
             <button
               type="button"
@@ -550,7 +561,7 @@ export function GoogleCalendarSection({
               disabled={busy}
               onClick={() => void disconnect()}
             >
-              Disconnect Google Calendar
+              <T>{"Disconnect Google Calendar"}</T>
             </button>
           </div>
           {reviewing && (
@@ -751,11 +762,11 @@ export function GoogleCalendarSection({
             disabled={connecting || connection?.configured === false || !connection}
             onClick={connect}
           >
-            {connecting ? "Waiting for Google…" : "Connect Google Calendar"}
+            {t(connecting ? "Waiting for Google…" : "Connect Google Calendar")}
           </button>
           {(connecting || error) && (
             <button type="button" className={buttonClass} onClick={() => void checkConnection()}>
-              Check connection
+              <T>{"Check connection"}</T>
             </button>
           )}
           {connecting && (
@@ -767,7 +778,7 @@ export function GoogleCalendarSection({
                 setConnecting(false);
               }}
             >
-              Cancel
+              <T>{"Cancel"}</T>
             </button>
           )}
         </div>
@@ -779,7 +790,7 @@ export function GoogleCalendarSection({
       )}
       {error && (
         <p role="alert" className="mt-3 text-sm text-red-300">
-          {error}
+          {t(error)}
         </p>
       )}
       {connection?.connected && error && (
@@ -789,7 +800,7 @@ export function GoogleCalendarSection({
           disabled={busy}
           onClick={() => void checkConnection()}
         >
-          Check connection
+          <T>{"Check connection"}</T>
         </button>
       )}
       {removalReport && (

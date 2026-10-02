@@ -1,31 +1,40 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
-import { safeInternalPath } from "@/lib/auth/redirect";
+import { useEffect, useState } from "react";
+import { accountPrompt, safeInternalPath } from "@/lib/auth/redirect";
 export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
   const router = useRouter();
-  const nextPath =
-    typeof window === "undefined"
-      ? "/app"
-      : safeInternalPath(new URLSearchParams(location.search).get("next"));
+  const [nextPath, setNextPath] = useState("/app");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Read the browser return path after matching the server's first render.
+    setNextPath(safeInternalPath(new URLSearchParams(location.search).get("next")));
+  }, []);
   const [busy, setBusy] = useState(false),
     [message, setMessage] = useState(""),
     [forgot, setForgot] = useState(false);
   return (
     <main className="auth-page app-content">
       <Link className="wordmark" href="/">
-        MIQĀT
+        <T>{"MIQĀT"}</T>
       </Link>
       <h1>
-        {forgot
-          ? "Reset your password"
-          : mode === "signup"
-            ? "Create your account"
-            : mode === "reset"
-              ? "Choose a new password"
-              : "Sign in"}
+        <T>
+          {forgot
+            ? "Reset your password"
+            : mode === "signup"
+              ? "Create your account"
+              : mode === "reset"
+                ? "Choose a new password"
+                : "Sign in"}
+        </T>
       </h1>
+      {mode !== "reset" && !forgot && (
+        <p>
+          <T>{accountPrompt(nextPath)}</T>
+        </p>
+      )}
       <form
         className="product-form"
         onSubmit={async (e) => {
@@ -67,13 +76,13 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
       >
         {mode !== "reset" && (
           <label>
-            Email
+            <T>{"Email"}</T>
             <input name="email" type="email" autoComplete="email" required maxLength={254} />
           </label>
         )}
         {!forgot && (
           <label>
-            Password
+            <T>{"Password"}</T>
             <input
               name="password"
               type="password"
@@ -84,22 +93,28 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
             />
           </label>
         )}
-        {message && <p role="status">{message}</p>}
+        {message && (
+          <p role="status">
+            <T>{message}</T>
+          </p>
+        )}
         <button className="primary-button" disabled={busy}>
-          {busy
-            ? "Please wait…"
-            : forgot
-              ? "Request password reset"
-              : mode === "signup"
-                ? "Create account"
-                : mode === "reset"
-                  ? "Save new password"
-                  : "Sign in"}
+          <T>
+            {busy
+              ? "Please wait…"
+              : forgot
+                ? "Request password reset"
+                : mode === "signup"
+                  ? "Create account"
+                  : mode === "reset"
+                    ? "Save new password"
+                    : "Sign in"}
+          </T>
         </button>
       </form>
       {mode === "signin" && (
         <button onClick={() => setForgot(!forgot)}>
-          {forgot ? "Back to sign in" : "Forgot password?"}
+          <T>{forgot ? "Back to sign in" : "Forgot password?"}</T>
         </button>
       )}
       <p>
@@ -110,12 +125,19 @@ export function AuthForm({ mode }: { mode: "signin" | "signup" | "reset" }) {
               : `/sign-up?next=${encodeURIComponent(nextPath)}`
           }
         >
-          {mode === "signup" ? "Already have an account? Sign in" : "Create an account"}
+          <T>{mode === "signup" ? "Already have an account? Sign in" : "Create an account"}</T>
         </Link>
       </p>
       <p>
-        By creating an account you agree to the <Link href="/terms">Terms</Link> and acknowledge the{" "}
-        <Link href="/privacy">Privacy policy</Link>.
+        <T>{"By creating an account you agree to the "}</T>
+        <Link href="/terms">
+          <T>{"Terms"}</T>
+        </Link>
+        <T>{" and acknowledge the"}</T>{" "}
+        <Link href="/privacy">
+          <T>{"Privacy policy"}</T>
+        </Link>
+        .
       </p>
     </main>
   );

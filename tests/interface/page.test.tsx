@@ -3,6 +3,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
 import Home from "../../src/app/sixth/page";
 
 afterEach(() => {
@@ -11,6 +12,7 @@ afterEach(() => {
 });
 
 beforeEach(() => {
+  sessionStorage.clear();
   vi.stubGlobal(
     "fetch",
     vi.fn().mockImplementation(async (url: string) =>

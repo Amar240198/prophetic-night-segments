@@ -1,22 +1,22 @@
+import { T } from "@/components/i18n/LocaleProvider";
 import Link from "next/link";
 
 export default function GetStartedPage() {
   return (
     <main className="landing">
-      <nav aria-label="Public navigation">
-        <Link className="wordmark" href="/">
-          MIQĀT
-        </Link>
-      </nav>
       <section className="app-card" aria-labelledby="get-started-title">
-        <h1 id="get-started-title">How would you like to begin?</h1>
-        <p>Explore the free Miqāt calculator now, or sign in to use account features.</p>
+        <h1 id="get-started-title">
+          <T>{"How would you like to begin?"}</T>
+        </h1>
+        <p>
+          <T>{"Explore the free Miqāt calculator now, or sign in to use account features."}</T>
+        </p>
         <div className="landing-actions">
-          <Link className="primary-button" href="/sixth">
-            Continue for Free
+          <Link className="primary-button" href="/app">
+            <T>{"Continue for Free"}</T>
           </Link>
           <Link className="secondary-button" href="/sign-in">
-            Sign In / Create Account
+            <T>{"Sign In / Create Account"}</T>
           </Link>
         </div>
       </section>

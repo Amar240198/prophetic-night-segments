@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -10,7 +11,12 @@ export function AccountPage() {
   const { state, refresh } = useProduct();
   const [message, setMessage] = useState("");
   const router = useRouter();
-  if (!state) return <p role="status">Loading account…</p>;
+  if (!state)
+    return (
+      <p role="status">
+        <T>{"Loading account…"}</T>
+      </p>
+    );
   const sub = state.entitlements.subscription;
   return (
     <>
@@ -28,34 +34,55 @@ export function AccountPage() {
             }
           }}
         >
-          Sign out
+          <T>{"Sign out"}</T>
         </button>
       </Card>
       <Card title="Your plan">
-        <h3>{state.entitlements.plan === "PRO" ? "Miqāt Pro" : "Free"}</h3>
+        <h3>
+          <T>{state.entitlements.plan === "PRO" ? "Miqāt Pro" : "Free"}</T>
+        </h3>
         {state.entitlements.plan === "PRO" && (
           <>
             <p>{formatPlanPrice()}</p>
             <p>
-              {sub.cancelAtPeriodEnd ? "Access continues until" : "Current billing period ends"}:{" "}
-              {sub.currentPeriodEnd
-                ? new Date(String(sub.currentPeriodEnd)).toLocaleDateString("en-GB")
-                : "Check billing details"}
+              <T>
+                {sub.cancelAtPeriodEnd ? "Access continues until" : "Current billing period ends"}
+              </T>
+              :{" "}
+              {sub.currentPeriodEnd ? (
+                <time dateTime={String(sub.currentPeriodEnd)}>
+                  {new Date(String(sub.currentPeriodEnd)).toLocaleDateString("en-GB")}
+                </time>
+              ) : (
+                <T>{"Check billing details"}</T>
+              )}
             </p>
           </>
         )}
         {sub.status === "past_due" && (
-          <p>Your payment needs attention. Update your payment method to restore Pro access.</p>
+          <p>
+            <T>
+              {"Your payment needs attention. Update your payment method to restore Pro access."}
+            </T>
+          </p>
         )}
         {sub.customer ? (
-          <BillingButton action="portal">Manage billing</BillingButton>
+          <BillingButton action="portal">
+            <T>{"Manage billing"}</T>
+          </BillingButton>
         ) : (
-          <BillingButton>Upgrade to Miqāt Pro — {formatPlanPrice()}</BillingButton>
+          <BillingButton>
+            <T>{"Upgrade to Miqāt Pro — "}</T>
+            {formatPlanPrice()}
+          </BillingButton>
         )}
         {sub.customer &&
           state.entitlements.plan === "FREE" &&
           ["canceled", "expired", "incomplete_expired"].includes(sub.status) && (
-            <BillingButton>Upgrade to Miqāt Pro — {formatPlanPrice()}</BillingButton>
+            <BillingButton>
+              <T>{"Upgrade to Miqāt Pro — "}</T>
+              {formatPlanPrice()}
+            </BillingButton>
           )}
         <button
           onClick={async () => {
@@ -68,14 +95,18 @@ export function AccountPage() {
             }
           }}
         >
-          Refresh billing status
+          <T>{"Refresh billing status"}</T>
         </button>
         <p>
-          <Link href="/pricing">Compare plans</Link>
+          <Link href="/pricing">
+            <T>{"Compare plans"}</T>
+          </Link>
         </p>
       </Card>
       <Card title="Security">
-        <Link href="/sign-in">Request a password reset</Link>
+        <Link href="/sign-in">
+          <T>{"Request a password reset"}</T>
+        </Link>
       </Card>
       <Card title="Your data">
         <button
@@ -95,13 +126,19 @@ export function AccountPage() {
             }
           }}
         >
-          Export account data
+          <T>{"Export account data"}</T>
         </button>
         <p>
-          <Link href="/privacy">Data retention and deletion information</Link>
+          <Link href="/privacy">
+            <T>{"Data retention and deletion information"}</T>
+          </Link>
         </p>
       </Card>
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p role="status">
+          <T>{message}</T>
+        </p>
+      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import Link from "next/link";
 import { useProduct } from "./ProductContext";
 import { PrayerSettings } from "./PrayerSettings";
@@ -10,15 +11,21 @@ export function SettingsPage() {
   return (
     <>
       <PageHeader title="Settings" description="Your prayer calculation and calendar connection." />
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          <T>{error}</T>
+        </p>
+      )}
       {state ? (
         <>
           <Card title="Prayer settings">
             {state.settings.sourceReviewRequired && (
               <p role="status">
-                Your previous timetable is no longer supported. Automation is paused. Review and
-                explicitly save a replacement calculation method; your existing calendar events have
-                not been changed.
+                <T>
+                  {
+                    "Your previous timetable is no longer supported. Automation is paused. Review and explicitly save a replacement calculation method; your existing calendar events have not been changed."
+                  }
+                </T>
               </p>
             )}
             <PrayerSettings initial={state.settings.prayer} onSave={(prayer) => save({ prayer })} />
@@ -31,14 +38,21 @@ export function SettingsPage() {
           </section>
           <Card title="Privacy">
             <p>
-              Only your selected calendars are analysed. Disconnecting stops access and leaves your
-              existing events unchanged.
+              <T>
+                {
+                  "Only your selected calendars are analysed. Disconnecting stops access and leaves your existing events unchanged."
+                }
+              </T>
             </p>
-            <Link href="/privacy">How Miqāt uses your data</Link>
+            <Link href="/privacy">
+              <T>{"How Miqāt uses your data"}</T>
+            </Link>
           </Card>
         </>
       ) : (
-        <p role="status">Loading settings…</p>
+        <p role="status">
+          <T>{"Loading settings…"}</T>
+        </p>
       )}
     </>
   );

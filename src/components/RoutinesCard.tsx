@@ -1,7 +1,9 @@
 "use client";
+import { T, useI18n } from "@/components/i18n/LocaleProvider";
 import { useState } from "react";
 import { ROUTINE_TEMPLATES } from "@/lib/routines/templates";
-import { humanReadableRule } from "@/lib/routines/resolve";
+import { RoutineRule } from "@/components/i18n/RoutineRule";
+import { ANCHOR_LABELS, ROUTINE_TYPE_LABELS, RECURRENCE_LABELS } from "@/lib/i18n/labels";
 import {
   validateRoutine,
   ROUTINE_ANCHORS,
@@ -11,6 +13,7 @@ import {
 } from "@/lib/routines/model";
 import { useDeviceRoutines } from "./app/useDeviceRoutines";
 export function RoutinesCard() {
+  const { t } = useI18n();
   const { routines, save, loading, error: accountError } = useDeviceRoutines();
   const [name, setName] = useState("");
   const [type, setType] = useState<RoutineType>("quran");
@@ -67,26 +70,36 @@ export function RoutinesCard() {
       className="border border-white/10 bg-[#0c2229] p-5 sm:p-9"
       aria-labelledby="routines-title"
     >
-      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">ROUTINES</p>
+      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
+        <T>{"ROUTINES"}</T>
+      </p>
       <h2 id="routines-title" className="mt-3 font-serif text-3xl">
-        Personal routines
+        <T>{"Personal routines"}</T>
       </h2>
-      <p className="mt-3 text-sm text-[#9baca7]">Routines are saved to your account.</p>
-      <h3 className="mt-6 text-xl">Suggested</h3>
+      <p className="mt-3 text-sm text-[#9baca7]">
+        <T>{"Routines are saved to your account."}</T>
+      </p>
+      <h3 className="mt-6 text-xl">
+        <T>{"Suggested"}</T>
+      </h3>
       <p className="mt-2 text-sm text-[#9baca7]">
-        Optional timing suggestions. Customise and save to add a routine.
+        <T>{"Optional timing suggestions. Customise and save to add a routine."}</T>
       </p>
       <ul className="mt-4 grid gap-3 sm:grid-cols-2">
         {ROUTINE_TEMPLATES.map((template) => (
           <li key={template.key} className="border border-white/10 p-4">
-            <h4>{template.title}</h4>
-            <p className="my-2 text-sm text-[#9baca7]">{template.description}</p>
+            <h4>
+              <T>{template.title}</T>
+            </h4>
+            <p className="my-2 text-sm text-[#9baca7]">
+              <T>{template.description}</T>
+            </p>
             <button
               type="button"
               className="secondary-button"
               onClick={() => {
                 setEditing(null);
-                setName(template.title);
+                setName(t(template.title));
                 setType(template.type);
                 setDuration(template.durationMinutes);
                 setTimingKind("relative");
@@ -96,12 +109,15 @@ export function RoutinesCard() {
                 setFormOpen(true);
               }}
             >
-              Customise {template.title}
+              <T>{"Customise "}</T>
+              <T>{template.title}</T>
             </button>
           </li>
         ))}
       </ul>
-      <h3 className="mt-6 text-xl">My Routines</h3>
+      <h3 className="mt-6 text-xl">
+        <T>{"My Routines"}</T>
+      </h3>
       <button
         className="primary-button mt-5"
         onClick={() => {
@@ -119,44 +135,71 @@ export function RoutinesCard() {
           setFormOpen(true);
         }}
       >
-        + Add Custom Routine
+        <T>{"+ Add Custom Routine"}</T>
       </button>
       {formOpen && (
         <form
           className="account-form mt-6"
-          aria-label={editing ? "Edit routine" : "New routine"}
+          aria-label={t(editing ? "Edit routine" : "New routine")}
           onSubmit={(e) => {
             e.preventDefault();
             add();
           }}
         >
-          <h3>{editing ? "Edit routine" : "New routine"}</h3>
+          <h3>
+            <T>{editing ? "Edit routine" : "New routine"}</T>
+          </h3>
           <input
-            aria-label="Routine name"
+            aria-label={t("Routine name")}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Qur’an reading"
+            placeholder={t("e.g. Qur’an reading")}
             className="border border-white/20 bg-[#06151a] px-3 py-2"
           />
           <select
-            aria-label="Routine type"
+            aria-label={t("Routine type")}
             value={type}
-            onChange={(e) => setType(e.target.value as RoutineType)}
+            onChange={(e) => {
+              const next = e.target.value as RoutineType;
+              setType(next);
+              if (next === "qaylula") {
+                setTimingKind("relative");
+                setAnchor("dhuhr");
+                setDuration(Math.max(1, duration));
+              }
+            }}
             className="border border-white/20 bg-[#06151a] px-3 py-2"
           >
-            <option value="quran">Qur’an</option>
-            <option value="dhikr">Dhikr</option>
-            <option value="qiyam">Qiyām</option>
-            <option value="tahajjud">Tahajjud</option>
-            <option value="suhoor">Suḥūr</option>
-            <option value="sleep-preparation">Sleep preparation</option>
-            <option value="custom">Custom</option>
+            <option value="qaylula">
+              <T>{"Qaylula"}</T>
+            </option>
+            <option value="quran">
+              <T>{"Qur’an"}</T>
+            </option>
+            <option value="dhikr">
+              <T>{"Dhikr"}</T>
+            </option>
+            <option value="qiyam">
+              <T>{"Qiyām"}</T>
+            </option>
+            <option value="tahajjud">
+              <T>{"Tahajjud"}</T>
+            </option>
+            <option value="suhoor">
+              <T>{"Suḥūr"}</T>
+            </option>
+            <option value="sleep-preparation">
+              <T>{"Sleep preparation"}</T>
+            </option>
+            <option value="custom">
+              <T>{"Custom"}</T>
+            </option>
           </select>
           <label>
-            Duration (minutes)
+            <T>{"Duration (minutes)"}</T>
             <input
               type="number"
-              min={0}
+              min={type === "qaylula" ? 1 : 0}
               max={1440}
               value={duration}
               onChange={(e) => setDuration(Number(e.target.value))}
@@ -164,24 +207,42 @@ export function RoutinesCard() {
             />
           </label>
           <label>
-            Repeat
+            <T>{"Repeat"}</T>
             <select
               value={recurrence}
               onChange={(e) => setRecurrence(e.target.value as RoutineRecurrence)}
             >
-              <option value="daily">Every day</option>
-              <option value="weekdays">Weekdays</option>
-              <option value="friday">Friday</option>
-              <option value="monday">Monday</option>
-              <option value="thursday">Thursday</option>
-              <option value="selected-weekdays">Selected weekdays</option>
-              <option value="white-days">White Days (arithmetic calendar)</option>
-              <option value="fasting-days">Enabled fasting days</option>
+              <option value="daily">
+                <T>{"Every day"}</T>
+              </option>
+              <option value="weekdays">
+                <T>{"Weekdays"}</T>
+              </option>
+              <option value="friday">
+                <T>{"Friday"}</T>
+              </option>
+              <option value="monday">
+                <T>{"Monday"}</T>
+              </option>
+              <option value="thursday">
+                <T>{"Thursday"}</T>
+              </option>
+              <option value="selected-weekdays">
+                <T>{"Selected weekdays"}</T>
+              </option>
+              <option value="white-days">
+                <T>{"White Days (arithmetic calendar)"}</T>
+              </option>
+              <option value="fasting-days">
+                <T>{"Enabled fasting days"}</T>
+              </option>
             </select>
           </label>
           {recurrence === "selected-weekdays" && (
             <fieldset>
-              <legend>Weekdays</legend>
+              <legend>
+                <T>{"Weekdays"}</T>
+              </legend>
               {["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].map(
                 (day, index) => (
                   <label key={day}>
@@ -196,16 +257,18 @@ export function RoutinesCard() {
                         )
                       }
                     />
-                    {day}
+                    <T>{day}</T>
                   </label>
                 ),
               )}
             </fieldset>
           )}
           <label>
-            Calendar
+            <T>{"Calendar"}</T>
             <select disabled>
-              <option>Google primary calendar</option>
+              <option value="primary">
+                <T>{"Google primary calendar"}</T>
+              </option>
             </select>
           </label>
           <label>
@@ -214,53 +277,66 @@ export function RoutinesCard() {
               checked={calendarSyncEnabled}
               onChange={(e) => setCalendarSyncEnabled(e.target.checked)}
             />
-            Calendar sync
+            <T>{"Calendar sync"}</T>
           </label>
           <label>
-            Notification
+            <T>{"Notification"}</T>
             <select
               value={notificationMinutes ?? "none"}
               onChange={(e) =>
                 setNotificationMinutes(e.target.value === "none" ? null : Number(e.target.value))
               }
             >
-              <option value="none">None</option>
+              <option value="none">
+                <T>{"None"}</T>
+              </option>
               {[0, 5, 10, 15, 30].map((minutes) => (
                 <option key={minutes} value={minutes}>
-                  {minutes === 0 ? "At event time" : `${minutes} minutes before`}
+                  <T values={{ minutes }}>
+                    {minutes === 0 ? "At event time" : "{minutes} minutes before"}
+                  </T>
                 </option>
               ))}
             </select>
           </label>
           <label>
-            Timing
+            <T>{"Timing"}</T>
             <select
               value={timingKind}
+              disabled={type === "qaylula"}
               onChange={(e) => setTimingKind(e.target.value as "fixed" | "relative")}
             >
-              <option value="relative">Relative to prayer</option>
-              <option value="fixed">Fixed time</option>
+              <option value="relative">
+                <T>{"Relative to prayer"}</T>
+              </option>
+              <option value="fixed">
+                <T>{"Fixed time"}</T>
+              </option>
             </select>
           </label>
           {timingKind === "fixed" ? (
             <label>
-              Time
+              <T>{"Time"}</T>
               <input type="time" value={time} onChange={(e) => setTime(e.target.value)} required />
             </label>
           ) : (
             <>
               <label>
-                Anchor
-                <select value={anchor} onChange={(e) => setAnchor(e.target.value as typeof anchor)}>
+                <T>{"Anchor"}</T>
+                <select
+                  disabled={type === "qaylula"}
+                  value={anchor}
+                  onChange={(e) => setAnchor(e.target.value as typeof anchor)}
+                >
                   {ROUTINE_ANCHORS.map((value) => (
                     <option key={value} value={value}>
-                      {value.replaceAll("_", " ")}
+                      <T>{ANCHOR_LABELS[value]}</T>
                     </option>
                   ))}
                 </select>
               </label>
               <label>
-                Offset preset
+                <T>{"Offset preset"}</T>
                 <select
                   value={
                     [0, -5, -10, -15, -30, -45, -60, 5, 10, 15, 30, 45, 60].includes(offset)
@@ -271,17 +347,23 @@ export function RoutinesCard() {
                     if (e.target.value !== "custom") setOffset(Number(e.target.value));
                   }}
                 >
-                  <option value="0">Immediately</option>
+                  <option value="0">
+                    <T>{"Immediately"}</T>
+                  </option>
                   {[-5, -10, -15, -30, -45, -60, 5, 10, 15, 30, 45, 60].map((n) => (
                     <option key={n} value={n}>
-                      {Math.abs(n)} minutes {n < 0 ? "before" : "after"}
+                      {Math.abs(n)}
+                      <T>{" minutes "}</T>
+                      <T>{n < 0 ? "before" : "after"}</T>
                     </option>
                   ))}
-                  <option value="custom">Custom offset</option>
+                  <option value="custom">
+                    <T>{"Custom offset"}</T>
+                  </option>
                 </select>
               </label>
               <label>
-                Offset (minutes)
+                <T>{"Offset (minutes)"}</T>
                 <input
                   type="number"
                   min={-1440}
@@ -295,19 +377,27 @@ export function RoutinesCard() {
           )}
           <div className="form-actions">
             <button type="submit" className="primary-button">
-              Save routine
+              <T>{"Save routine"}</T>
             </button>
             <button type="button" className="secondary-button" onClick={() => setFormOpen(false)}>
-              Cancel
+              <T>{"Cancel"}</T>
             </button>
           </div>
         </form>
       )}
-      {loading && <p role="status">Loading account routines…</p>}
-      {accountError && <p role="alert">{accountError}</p>}
+      {loading && (
+        <p role="status">
+          <T>{"Loading account routines…"}</T>
+        </p>
+      )}
+      {accountError && (
+        <p role="alert">
+          <T>{accountError}</T>
+        </p>
+      )}
       {error && (
         <p role="alert" className="mt-3 text-red-300">
-          {error}
+          <T>{error}</T>
         </p>
       )}
       <ul className="mt-5 grid gap-2">
@@ -317,10 +407,12 @@ export function RoutinesCard() {
             className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-white/10 p-4 text-sm"
           >
             <span>
-              {routine.name} · {routine.type} · {routine.durationMinutes} minutes
+              {routine.name} · <T>{ROUTINE_TYPE_LABELS[routine.type]}</T> ·{" "}
+              {routine.durationMinutes}
+              <T>{" minutes"}</T>
               <span className="mt-2 block text-[#9baca7]">
-                {humanReadableRule(routine)} · {routine.recurrence} ·{" "}
-                {routine.enabled ? "Enabled" : "Disabled"}
+                <RoutineRule routine={routine} /> · <T>{RECURRENCE_LABELS[routine.recurrence]}</T> ·{" "}
+                <T>{routine.enabled ? "Enabled" : "Disabled"}</T>
               </span>
             </span>
             <div className="form-actions">
@@ -343,7 +435,7 @@ export function RoutinesCard() {
                   setFormOpen(true);
                 }}
               >
-                Edit
+                <T>{"Edit"}</T>
               </button>
               <button
                 onClick={() =>
@@ -356,14 +448,14 @@ export function RoutinesCard() {
                   )
                 }
               >
-                {routine.enabled ? "Disable" : "Enable"}
+                <T>{routine.enabled ? "Disable" : "Enable"}</T>
               </button>
               <button
                 type="button"
                 className="text-[#d0ae67]"
                 onClick={() => save(routines.filter((item) => item.id !== routine.id))}
               >
-                Delete
+                <T>{"Delete"}</T>
               </button>
             </div>
           </li>

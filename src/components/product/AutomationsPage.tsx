@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useProduct, productApi } from "./ProductContext";
@@ -54,7 +55,9 @@ export function AutomationEditor({
       }}
     >
       <fieldset disabled={busy}>
-        <legend>Prayers</legend>
+        <legend>
+          <T>{"Prayers"}</T>
+        </legend>
         <label>
           <input
             type="checkbox"
@@ -66,10 +69,10 @@ export function AutomationEditor({
               })
             }
           />
-          Protect daily prayers
+          <T>{"Protect daily prayers"}</T>
         </label>
         <label>
-          Protection mode
+          <T>{"Protection mode"}</T>
           <select
             value={preferences.protectionMode}
             onChange={(e) =>
@@ -79,20 +82,28 @@ export function AutomationEditor({
               })
             }
           >
-            <option value="OFF">Off</option>
-            <option value="SUGGEST_ONLY">Recommendations only</option>
-            <option value="CREATE_CALENDAR_BLOCK">Add calendar blocks</option>
+            <option value="OFF">
+              <T>{"Off"}</T>
+            </option>
+            <option value="SUGGEST_ONLY">
+              <T>{"Recommendations only"}</T>
+            </option>
+            <option value="CREATE_CALENDAR_BLOCK">
+              <T>{"Add calendar blocks"}</T>
+            </option>
           </select>
         </label>
         {(["minimumRequiredMinutes", "bufferBefore", "bufferAfter"] as const).map((key, i) => (
           <label key={key}>
-            {
-              [
-                "Prayer duration (minutes)",
-                "Buffer before meetings (minutes)",
-                "Buffer after meetings (minutes)",
-              ][i]
-            }
+            <T>
+              {
+                [
+                  "Prayer duration (minutes)",
+                  "Buffer before meetings (minutes)",
+                  "Buffer after meetings (minutes)",
+                ][i]
+              }
+            </T>
             <input
               type="number"
               min={i ? 0 : 1}
@@ -109,21 +120,23 @@ export function AutomationEditor({
             checked={config.modules.includes("prayers")}
             onChange={(e) => module("prayers", e.target.checked)}
           />
-          Include daily prayer reminders in my managed calendar
+          <T>{"Include daily prayer reminders in my managed calendar"}</T>
         </label>
       </fieldset>
       <fieldset>
-        <legend>Night worship</legend>
+        <legend>
+          <T>{"Night worship"}</T>
+        </legend>
         <label>
           <input
             type="checkbox"
             checked={config.modules.includes("night")}
             onChange={(e) => module("night", e.target.checked)}
           />
-          Qiyām
+          <T>{"Qiyām"}</T>
         </label>
         <label>
-          Preferred window
+          <T>{"Preferred window"}</T>
           <select
             value={config.night === "dawud" ? "dawud" : (config.qiyamWindow ?? "last-third")}
             onChange={(e) =>
@@ -134,15 +147,25 @@ export function AutomationEditor({
               })
             }
           >
-            <option value="last-third">Last third</option>
-            <option value="final-sixth">Final sixth</option>
-            <option value="dawud">Dāwūd night pattern · Parts 4–5</option>
+            <option value="last-third">
+              <T>{"Last third"}</T>
+            </option>
+            <option value="final-sixth">
+              <T>{"Final sixth"}</T>
+            </option>
+            <option value="dawud">
+              <T>{"Dāwūd night pattern · Parts 4–5"}</T>
+            </option>
           </select>
         </label>
-        <p>Parts 5–6 form the last third. The Dāwūd prayer period is Parts 4–5.</p>
+        <p>
+          <T>{"Parts 5–6 form the last third. The Dāwūd prayer period is Parts 4–5."}</T>
+        </p>
       </fieldset>
       <fieldset>
-        <legend>Fasting</legend>
+        <legend>
+          <T>{"Fasting"}</T>
+        </legend>
         {(
           [
             ["monday", "Mondays"],
@@ -167,13 +190,13 @@ export function AutomationEditor({
                 })
               }
             />
-            {label}
+            <T>{label}</T>
           </label>
         ))}
         {config.fasting.includes("dawud") && (
           <>
             <label>
-              First fasting date
+              <T>{"First fasting date"}</T>
               <input
                 required
                 type="date"
@@ -184,8 +207,11 @@ export function AutomationEditor({
               />
             </label>
             <p>
-              The alternating-day pattern starts on this date. Check lunar dates with your local
-              authority.
+              <T>
+                {
+                  "The alternating-day pattern starts on this date. Check lunar dates with your local authority."
+                }
+              </T>
             </p>
           </>
         )}
@@ -211,32 +237,44 @@ export function AutomationEditor({
               }
             }}
           >
-            Import fasting choices from this device
+            <T>{"Import fasting choices from this device"}</T>
           </button>
         )}
       </fieldset>
       <fieldset>
-        <legend>Routines and reminders</legend>
+        <legend>
+          <T>{"Routines and reminders"}</T>
+        </legend>
         <label>
           <input
             type="checkbox"
             checked={config.modules.includes("routines")}
             onChange={(e) => module("routines", e.target.checked)}
           />
-          Include my enabled worship routines
+          <T>{"Include my enabled worship routines"}</T>
         </label>
         <p>
-          Calendar reminders follow your calendar settings. Miqāt does not send push or SMS
-          notifications.
+          <T>
+            {
+              "Calendar reminders follow your calendar settings. Miqāt does not send push or SMS notifications."
+            }
+          </T>
         </p>
       </fieldset>
       <p>
-        Prayer location and destination calendar are configured in{" "}
-        <Link href="/app/settings">Settings</Link>.
+        <T>{"Prayer location and destination calendar are configured in"}</T>{" "}
+        <Link href="/app/settings">
+          <T>{"Settings"}</T>
+        </Link>
+        .
       </p>
-      {message && <p role="status">{message}</p>}
+      {message && (
+        <p role="status">
+          <T>{message}</T>
+        </p>
+      )}
       <button className="primary-button" disabled={busy}>
-        Save automation preferences
+        <T>{"Save automation preferences"}</T>
       </button>
     </form>
   );
@@ -272,7 +310,11 @@ export function AutomationsPage() {
   return (
     <>
       <PageHeader title="Automations" description="One place to decide what Miqāt helps manage." />
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          <T>{error}</T>
+        </p>
+      )}
       {state ? (
         <>
           <Card title="Your worship preferences">
@@ -290,13 +332,21 @@ export function AutomationsPage() {
             <Paywall title="Advanced routines" />
           )}
           <Card title="Calendar automation">
-            <p>{enabled ? "Automatic updates are enabled." : "Automatic updates are paused."}</p>
             <p>
-              Calendar management is currently unavailable. Your preferences can be saved and
-              recommendations remain available with Pro.
+              <T>{enabled ? "Automatic updates are enabled." : "Automatic updates are paused."}</T>
             </p>
             <p>
-              Destination: <Link href="/app/settings#calendar">Manage in Settings</Link>
+              <T>
+                {
+                  "Calendar management is currently unavailable. Your preferences can be saved and recommendations remain available with Pro."
+                }
+              </T>
+            </p>
+            <p>
+              <T>{"Destination: "}</T>
+              <Link href="/app/settings#calendar">
+                <T>{"Manage in Settings"}</T>
+              </Link>
             </p>
             <label>
               <input
@@ -319,13 +369,19 @@ export function AutomationsPage() {
                   }
                 }}
               />
-              Keep Miqāt-owned blocks automatically updated
+              <T>{"Keep Miqāt-owned blocks automatically updated"}</T>
             </label>
-            {message && <p role="status">{message}</p>}
+            {message && (
+              <p role="status">
+                <T>{message}</T>
+              </p>
+            )}
           </Card>
         </>
       ) : (
-        <p role="status">Loading automation preferences…</p>
+        <p role="status">
+          <T>{"Loading automation preferences…"}</T>
+        </p>
       )}
     </>
   );

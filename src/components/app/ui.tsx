@@ -1,17 +1,28 @@
+import { T } from "@/components/i18n/LocaleProvider";
 import type { ReactNode } from "react";
-export function PageHeader({ title, description }: { title: string; description?: string }) {
+export function PageHeader({ title, description }: { title: string; description?: ReactNode }) {
   return (
     <header className="page-header">
-      <p className="eyebrow">MIQĀT</p>
-      <h1>{title}</h1>
-      {description && <p>{description}</p>}
+      <p className="eyebrow">
+        <T>{"MIQĀT"}</T>
+      </p>
+      <h1>
+        <T>{title}</T>
+      </h1>
+      {description && (
+        <p>
+          <T>{description}</T>
+        </p>
+      )}
     </header>
   );
 }
 export function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="app-card">
-      <h2>{title}</h2>
+      <h2>
+        <T>{title}</T>
+      </h2>
       {children}
     </section>
   );

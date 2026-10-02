@@ -1,5 +1,5 @@
 export type RoutineType =
-  "quran" | "dhikr" | "qiyam" | "tahajjud" | "suhoor" | "sleep-preparation" | "custom";
+  "qaylula" | "quran" | "dhikr" | "qiyam" | "tahajjud" | "suhoor" | "sleep-preparation" | "custom";
 export const ROUTINE_ANCHORS = [
   "fajr",
   "sunrise",
@@ -49,9 +49,16 @@ export function validateRoutine(
     typeof input.name !== "string" ||
     !input.name.trim() ||
     input.name.trim().length > 120 ||
-    !["quran", "dhikr", "qiyam", "tahajjud", "suhoor", "sleep-preparation", "custom"].includes(
-      String(input.type),
-    ) ||
+    ![
+      "qaylula",
+      "quran",
+      "dhikr",
+      "qiyam",
+      "tahajjud",
+      "suhoor",
+      "sleep-preparation",
+      "custom",
+    ].includes(String(input.type)) ||
     (input.enabled !== undefined && typeof input.enabled !== "boolean") ||
     (input.recurrence !== undefined &&
       ![
@@ -70,6 +77,13 @@ export function validateRoutine(
     !Number.isInteger(input.durationMinutes) ||
     input.durationMinutes < 0 ||
     input.durationMinutes > 1440
+  )
+    throw new Error("INVALID_ROUTINE");
+  if (
+    input.type === "qaylula" &&
+    (input.timing.kind !== "relative" ||
+      input.timing.anchor !== "dhuhr" ||
+      input.durationMinutes < 1)
   )
     throw new Error("INVALID_ROUTINE");
   if (!["fixed", "relative"].includes(input.timing.kind)) throw new Error("INVALID_ROUTINE");

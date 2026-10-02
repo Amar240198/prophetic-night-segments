@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -14,7 +15,12 @@ export function Onboarding() {
   const router = useRouter();
   const [message, setMessage] = useState(""),
     [busy, setBusy] = useState(false);
-  if (!state) return <p role="status">{error || "Loading your setup…"}</p>;
+  if (!state)
+    return (
+      <p role="status">
+        <T>{error || "Loading your setup…"}</T>
+      </p>
+    );
   const step = state.settings.onboarding;
   async function advance(patch: Record<string, unknown> = {}) {
     setBusy(true);
@@ -34,14 +40,24 @@ export function Onboarding() {
         description="Your progress is saved. Existing connections and settings stay yours."
       />
       <p role="status">
-        {step === "complete"
-          ? "Setup complete"
-          : `Step ${["welcome", "prayer", "plan", "calendar", "selection", "automation"].indexOf(step) + 1} of ${state.entitlements.plan === "PRO" ? 6 : 3}`}
+        <T
+          values={{
+            step:
+              ["welcome", "prayer", "plan", "calendar", "selection", "automation"].indexOf(step) +
+              1,
+            total: state.entitlements.plan === "PRO" ? 6 : 3,
+          }}
+        >
+          {step === "complete" ? "Setup complete" : "Step {step} of {total}"}
+        </T>
       </p>
       {state.settings.sourceReviewRequired && (
         <p role="status">
-          Your previous timetable is no longer supported. Automation is paused until you review and
-          save replacement prayer settings. Existing calendar events are unchanged.
+          <T>
+            {
+              "Your previous timetable is no longer supported. Automation is paused until you review and save replacement prayer settings. Existing calendar events are unchanged."
+            }
+          </T>
         </p>
       )}
       <Card
@@ -59,9 +75,11 @@ export function Onboarding() {
       >
         {step === "welcome" && (
           <>
-            <p>Miqāt helps you see Salah alongside the day you already have.</p>
+            <p>
+              <T>{"Miqāt helps you see Salah alongside the day you already have."}</T>
+            </p>
             <button disabled={busy} onClick={() => void advance()}>
-              Continue
+              <T>{"Continue"}</T>
             </button>
           </>
         )}
@@ -74,23 +92,39 @@ export function Onboarding() {
         )}
         {step === "plan" && (
           <>
-            <h3>Free</h3>
-            <p>Prayer times, night calculations and the detailed Sixth of the Night calculator.</p>
+            <h3>
+              <T>{"Free"}</T>
+            </h3>
+            <p>
+              <T>
+                {"Prayer times, night calculations and the detailed Sixth of the Night calculator."}
+              </T>
+            </p>
             <button disabled={busy} onClick={() => void advance()}>
-              {state.entitlements.plan === "PRO" ? "Continue with Pro" : "Continue Free"}
+              <T>{state.entitlements.plan === "PRO" ? "Continue with Pro" : "Continue Free"}</T>
             </button>
-            <h3>Miqāt Pro · {formatPlanPrice()}</h3>
+            <h3>
+              <T>{"Miqāt Pro · "}</T>
+              {formatPlanPrice()}
+            </h3>
             <ul>
               {PRO_BENEFITS.map((x) => (
-                <li key={x}>{x}</li>
+                <li key={x}>
+                  <T>{x}</T>
+                </li>
               ))}
             </ul>
             {state.entitlements.plan !== "PRO" && (
-              <BillingButton>Upgrade to Miqāt Pro</BillingButton>
+              <BillingButton>
+                <T>{"Upgrade to Miqāt Pro"}</T>
+              </BillingButton>
             )}
             <p>
-              Calendar management is currently unavailable. Pro calendar analysis and
-              recommendations can be used with read access.
+              <T>
+                {
+                  "Calendar management is currently unavailable. Pro calendar analysis and recommendations can be used with read access."
+                }
+              </T>
             </p>
           </>
         )}
@@ -98,9 +132,11 @@ export function Onboarding() {
           <>
             <CalendarSettings />
             <button disabled={busy} onClick={() => void advance()}>
-              Continue
+              <T>{"Continue"}</T>
             </button>
-            <p>You can connect later from Settings.</p>
+            <p>
+              <T>{"You can connect later from Settings."}</T>
+            </p>
           </>
         )}
         {step === "automation" && (
@@ -124,7 +160,7 @@ export function Onboarding() {
         )}
         {step === "automation" && (
           <button disabled={busy} onClick={() => void advance()}>
-            Continue
+            <T>{"Continue"}</T>
           </button>
         )}
         {step === "complete" && (
@@ -135,12 +171,18 @@ export function Onboarding() {
               router.refresh();
             }}
           >
-            Open Today
+            <T>{"Open Today"}</T>
           </button>
         )}
-        {message && <p role="alert">{message}</p>}
+        {message && (
+          <p role="alert">
+            <T>{message}</T>
+          </p>
+        )}
       </Card>
-      <Link href="/app/settings">Review existing settings</Link>
+      <Link href="/app/settings">
+        <T>{"Review existing settings"}</T>
+      </Link>
     </>
   );
 }

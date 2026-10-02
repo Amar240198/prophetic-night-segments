@@ -24,9 +24,12 @@ beforeEach(() => {
   auth.settings.mockReset();
   auth.redirect.mockClear();
 });
-it("protects every authenticated section through the shared layout", async () => {
+it("allows guests into the shared layout and public calculator without querying account settings", async () => {
   auth.read.mockResolvedValue(null);
-  await expect(Layout({ children: <p>Private</p> })).rejects.toThrow("REDIRECT:/sign-in");
+  expect(React.isValidElement(await Layout({ children: <p>Public</p> }))).toBe(true);
+  expect(React.isValidElement(await Today())).toBe(true);
+  expect(auth.settings).not.toHaveBeenCalled();
+  expect(auth.redirect).not.toHaveBeenCalled();
 });
 it("resumes incomplete setup and lets configured users return to Today", async () => {
   auth.read.mockResolvedValue({ id: "user" });
@@ -43,3 +46,16 @@ it.each([
 ] as const)("preserves legacy URLs with a canonical redirect", (Page, target) => {
   expect(() => Page()).toThrow(`REDIRECT:${target}`);
 });
+
+it.each(["account", "calendar", "settings", "automations", "onboarding"])(
+  "protects %s and retains its destination",
+  async (route) => {
+    const { default: Page } = await import(`../../src/app/app/${route}/page.tsx`);
+    auth.read.mockResolvedValue(null);
+    await expect(Page()).rejects.toThrow(
+      `REDIRECT:/sign-in?next=${encodeURIComponent(`/app/${route}`)}`,
+    );
+    auth.read.mockResolvedValue({ id: "user" });
+    expect(React.isValidElement(await Page())).toBe(true);
+  },
+);

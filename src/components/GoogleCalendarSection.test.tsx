@@ -2,6 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { LocaleProvider } from "@/components/i18n/LocaleProvider";
 import { GoogleCalendarSection } from "./GoogleCalendarSection";
 import { GoogleCalendarCompletion } from "./GoogleCalendarCompletion";
 
@@ -86,7 +87,12 @@ it("requires explicit selection, submits only chosen events, and disconnects", a
     .mockResolvedValueOnce(json({ connected: false, revoked: true }));
   vi.stubGlobal("fetch", fetchMock);
   render(<GoogleCalendarSection events={events} valid />);
-  expect(await screen.findByText("Connected as: user@example.com")).toBeInTheDocument();
+  expect(
+    await screen.findByText(
+      (_, element) =>
+        element?.tagName === "P" && element.textContent === "Connected as: user@example.com",
+    ),
+  ).toBeInTheDocument();
   expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Add Qiyam / Tahajjud Plan to Calendar" }));
   expect(screen.getByRole("button", { name: "Add selected events (0)" })).toBeDisabled();
@@ -187,7 +193,12 @@ it("expires the connected display when the session reaches its expiry", async ()
   await act(async () => {
     await Promise.resolve();
   });
-  expect(screen.getByText("Connected as: user@example.com")).toBeInTheDocument();
+  expect(
+    screen.getByText(
+      (_, element) =>
+        element?.tagName === "P" && element.textContent === "Connected as: user@example.com",
+    ),
+  ).toBeInTheDocument();
   await act(async () => {
     vi.advanceTimersByTime(2001);
   });
@@ -778,4 +789,24 @@ it("explicitly confirms removal of all persisted types without depending on visi
   expect(
     screen.getByText("1 events removed; 0 already absent. 0 failed or were not attempted."),
   ).toHaveAttribute("role", "status");
+});
+
+it("localizes connection controls while leaving account email and custom module names raw", async () => {
+  vi.stubGlobal(
+    "fetch",
+    vi
+      .fn()
+      .mockResolvedValue(
+        json({ connected: true, configured: true, email: "settings@example.com" }),
+      ),
+  );
+  render(
+    <LocaleProvider initialLocale="ar">
+      <GoogleCalendarSection events={events} valid moduleTitle="Settings" />
+    </LocaleProvider>,
+  );
+  await screen.findByText("تم الاتصال بتقويم Google");
+  expect(screen.getByText("settings@example.com")).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "إضافة Settings إلى التقويم" })).toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "فصل تقويم جوجل" })).toBeInTheDocument();
 });

@@ -13,6 +13,18 @@ export interface RoutineTemplate {
 /** Suggestions are optional scheduling choices, not claims about prescribed exact timings. */
 export const ROUTINE_TEMPLATES: readonly RoutineTemplate[] = [
   {
+    key: "qaylula",
+    title: "Qaylula",
+    type: "qaylula",
+    anchor: "dhuhr",
+    offsetMinutes: 15,
+    durationMinutes: 20,
+    recurrence: "daily",
+    category: "daily",
+    description:
+      "Choose your own rest window before or after Dhuhr. This is a personal scheduling choice.",
+  },
+  {
     key: "morning-adhkar",
     title: "Morning Adhkar",
     type: "dhikr",

@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 import { useCallback, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
@@ -47,16 +48,23 @@ export function BillingButton({
   useEffect(() => {
     if (!autoStart || started.current || typeof window === "undefined") return;
     if (new URLSearchParams(window.location.search).get("upgrade") !== "1") return;
-    started.current = true;
-    const timer = window.setTimeout(() => void openBilling(), 0);
+    const timer = window.setTimeout(() => {
+      if (started.current) return;
+      started.current = true;
+      void openBilling();
+    }, 0);
     return () => window.clearTimeout(timer);
   }, [autoStart, openBilling]);
   return (
     <>
       <button className="primary-button" disabled={busy} onClick={() => void openBilling()}>
-        {busy ? "Opening secure billing…" : children}
+        <T>{busy ? "Opening secure billing…" : children}</T>
       </button>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert">
+          <T>{error}</T>
+        </p>
+      )}
     </>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { T, useI18n } from "@/components/i18n/LocaleProvider";
 
 import { createAlarmPlan, formatInstant } from "@prophetic-night/night-engine";
 import type { AlarmPreferences, NightCalculationResult } from "@prophetic-night/night-engine";
@@ -49,6 +50,7 @@ export function NightEndTimeline({
   firstAdhanMinutes,
   bufferBeforeFajrMinutes = DEFAULT_BUFFER_BEFORE_FAJR_MINUTES,
 }: NightEndTimelineProps) {
+  const { t } = useI18n();
   const schedule = useMemo(
     () => createNightEndSchedule(result, bufferBeforeFajrMinutes, firstAdhanMinutes),
     [result, bufferBeforeFajrMinutes, firstAdhanMinutes],
@@ -57,7 +59,7 @@ export function NightEndTimeline({
   return (
     <section
       className="mt-7 border border-white/10 bg-[#0c2229] p-5 sm:p-7"
-      aria-label="Fajr and wake schedule"
+      aria-label={t("Fajr and wake schedule")}
     >
       <ol className="grid gap-2" aria-live="polite">
         {schedule.map((event, index) => {
@@ -75,9 +77,11 @@ export function NightEndTimeline({
                 {index === schedule.length - 1 ? "●" : "↓"}
               </span>
               <span>
-                {event.label}
+                <T>{event.label}</T>
                 {coincidesWithPrevious && (
-                  <span className="ml-2 text-xs text-[#8ea29d]">Same time as above</span>
+                  <span className="ms-2 text-xs text-[#8ea29d]">
+                    <T>{"Same time as above"}</T>
+                  </span>
                 )}
               </span>
               <strong className="text-[#d0ae67]">
@@ -88,8 +92,11 @@ export function NightEndTimeline({
         })}
       </ol>
       <p className="mt-3 text-xs leading-5 text-[#8ea29d]">
-        Fajr is the beginning of Fajr / true dawn (al-Fajr al-Ṣādiq). Wake before Fajr is a selected
-        scheduling offset, not an astronomical dawn calculation.
+        <T>
+          {
+            "Fajr is the beginning of Fajr / true dawn (al-Fajr al-Ṣādiq). Wake before Fajr is a selected scheduling offset, not an astronomical dawn calculation."
+          }
+        </T>
       </p>
     </section>
   );

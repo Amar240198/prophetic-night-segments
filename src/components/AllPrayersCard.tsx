@@ -1,4 +1,5 @@
 "use client";
+import { T } from "@/components/i18n/LocaleProvider";
 
 import { useMemo, useState } from "react";
 import type { DailyPrayerSchedule } from "@/lib/calendar/buildCalendarEvents";
@@ -52,15 +53,18 @@ export function AllPrayersCard({
       className="border border-white/10 bg-[#0c2229] p-5 sm:p-9"
       aria-labelledby="all-prayers-title"
     >
-      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">ALL PRAYERS</p>
+      <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
+        <T>{"ALL PRAYERS"}</T>
+      </p>
       <h2 id="all-prayers-title" className="mt-3 font-serif text-3xl">
-        Today’s prayer timetable
+        <T>{"Today’s prayer timetable"}</T>
       </h2>
       <p className="mt-2 text-sm text-[#9baca7]">
         {schedule.date} · {schedule.source}
       </p>
       <p className="mt-3 text-sm text-[#d0ae67]" aria-live="polite">
-        Next prayer: {nextPrayer?.title ?? "Fajr tomorrow"}
+        <T>{"Next prayer: "}</T>
+        <T>{nextPrayer?.title ?? "Fajr tomorrow"}</T>
       </p>
       <div className="mt-6 grid gap-2 sm:grid-cols-2">
         {[
@@ -76,8 +80,12 @@ export function AllPrayersCard({
             className="flex items-center justify-between border border-white/10 bg-[#06151a] px-4 py-3"
           >
             <span className={id === "sunrise" ? "text-[#9baca7]" : "text-white"}>
-              {label}
-              {id === "sunrise" && <span className="ml-2 text-xs">informational</span>}
+              <T>{label}</T>
+              {id === "sunrise" && (
+                <span className="ms-2 text-xs">
+                  <T>{"informational"}</T>
+                </span>
+              )}
             </span>
             <span className="font-semibold text-[#d0ae67]">
               {id === "sunrise" ? sunrise : display(id)}
@@ -86,7 +94,9 @@ export function AllPrayersCard({
         ))}
       </div>
       <fieldset className="mt-6 grid gap-2">
-        <legend className="mb-2 text-sm font-semibold">Prayers to add or sync</legend>
+        <legend className="mb-2 text-sm font-semibold">
+          <T>{"Prayers to add or sync"}</T>
+        </legend>
         {events.map((event) => (
           <label
             key={event.id}
@@ -104,7 +114,7 @@ export function AllPrayersCard({
               }
             />
             <span>
-              {event.title}
+              <T>{event.title}</T>
               <span className="mt-1 block text-xs text-[#9baca7]">
                 {clock(event.start, schedule.timeZone)}
               </span>
@@ -118,7 +128,7 @@ export function AllPrayersCard({
           className="border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67]"
           onClick={() => updateSelection(requiredIds)}
         >
-          Select all
+          <T>{"Select all"}</T>
         </button>
       </div>
       <GoogleCalendarSection

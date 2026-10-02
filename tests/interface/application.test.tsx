@@ -185,7 +185,7 @@ it("presents one product and the separately available free calculator", () => {
 });
 it("offers a public choice before entering the free calculator", () => {
   render(<GetStarted />);
-  expect(screen.getByRole("link", { name: "Continue for Free" })).toHaveAttribute("href", "/sixth");
+  expect(screen.getByRole("link", { name: "Continue for Free" })).toHaveAttribute("href", "/app");
   expect(screen.getByRole("link", { name: "Sign In / Create Account" })).toHaveAttribute(
     "href",
     "/sign-in",
@@ -231,8 +231,10 @@ it("shows prayer times, Qiyām and fasting without editing controls", () => {
   expect(screen.getByText("Midpoint")).toBeInTheDocument();
   expect(screen.getByText("Last third")).toBeInTheDocument();
   expect(screen.getByText(/Fasting today/)).toBeInTheDocument();
-  expect(screen.queryByRole("checkbox")).not.toBeInTheDocument();
-  expect(screen.queryByRole("combobox")).not.toBeInTheDocument();
+  const prayerCard = screen.getByRole("heading", { name: "Your prayer day" }).closest("section")!;
+  expect(within(prayerCard).queryByRole("checkbox")).not.toBeInTheDocument();
+  expect(within(prayerCard).queryByRole("combobox")).not.toBeInTheDocument();
+  expect(screen.getByRole("heading", { name: "Qaylula" })).toBeInTheDocument();
   expect(fetch).not.toHaveBeenCalled();
 });
 it("keeps prayer and night data visible during a calendar disconnection", async () => {
@@ -321,9 +323,31 @@ it("supports adding, editing, disabling and deleting an account routine", async 
   fireEvent.click(screen.getByRole("button", { name: "Edit" }));
   fireEvent.change(screen.getByLabelText("Duration (minutes)"), { target: { value: "30" } });
   fireEvent.click(screen.getByRole("button", { name: "Save routine" }));
-  expect(await screen.findByText(/Reading · quran · 30 minutes/)).toBeInTheDocument();
+  expect(await screen.findByText(/Reading · Qur’an · 30 minutes/)).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Disable" }));
   expect(await screen.findByRole("button", { name: "Enable" })).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(screen.queryByText(/Reading ·/)).not.toBeInTheDocument());
+});
+
+it("resumes upgrade intent once after authentication, including Strict Mode effect replay", async () => {
+  window.history.pushState({}, "", "/pricing?upgrade=1");
+  const billing = vi.fn(
+    async () =>
+      new Response(JSON.stringify({ error: { message: "Fixture checkout unavailable" } }), {
+        status: 503,
+      }),
+  );
+  vi.stubGlobal("fetch", billing);
+  render(
+    <React.StrictMode>
+      <BillingButton autoStart>Upgrade</BillingButton>
+    </React.StrictMode>,
+  );
+  await screen.findByRole("alert");
+  expect(billing).toHaveBeenCalledTimes(1);
+  expect(billing).toHaveBeenCalledWith(
+    "/api/billing/checkout",
+    expect.objectContaining({ method: "POST" }),
+  );
 });

@@ -208,7 +208,7 @@ select {
 .mobile-more a,
 .mobile-more button {
   padding: 0.8rem;
-  text-align: left;
+  text-align: start;
   border-radius: 8px;
 }
 .skip-link {
@@ -383,7 +383,7 @@ select {
     height: 100vh;
     padding: 2rem 1.25rem;
     background: #0a1c27;
-    border-right: 1px solid #ffffff12;
+    border-inline-end: 1px solid #ffffff12;
   }
   .app-sidebar nav {
     display: grid;
@@ -502,7 +502,7 @@ button:disabled {
 .prayer-analysis {
   margin: 1.5rem 0;
   padding: 1rem;
-  border-left: 3px solid #c5a46a;
+  border-inline-start: 3px solid #c5a46a;
   background: #0d242c;
 }
 .prayer-analysis h3 {
@@ -541,5 +541,63 @@ button:disabled {
   }
   .app-content {
     padding-bottom: 6rem;
+  }
+}
+
+/* One locale picker in the shared header, including public and auth pages. */
+.shared-header {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  direction: ltr;
+}
+.shared-header nav {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.language-picker select {
+  background: #0c202d;
+  color: #e1d0a7;
+  border: 1px solid #ffffff30;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  min-height: 44px;
+}
+[dir="rtl"] .shared-header nav,
+[dir="rtl"] .language-picker {
+  direction: rtl;
+}
+[dir="rtl"] body {
+  font-family: Tahoma, Arial, sans-serif;
+}
+[dir="rtl"] .eyebrow,
+[dir="rtl"] h1,
+[dir="rtl"] h2,
+[dir="rtl"] h3 {
+  letter-spacing: normal;
+}
+[dir="rtl"] input[type="email"],
+input[type="number"],
+input[type="time"],
+input[type="date"] {
+  direction: ltr;
+}
+@media (max-width: 480px) {
+  .shared-header {
+    gap: 0.5rem;
+    padding: 0.75rem;
+  }
+  .shared-header .wordmark {
+    font-size: 1.15rem;
+  }
+  .shared-header nav {
+    font-size: 0.75rem;
+    gap: 0.5rem;
+  }
+  .language-picker select {
+    max-width: 7rem;
+    font-size: 0.85rem;
   }
 }

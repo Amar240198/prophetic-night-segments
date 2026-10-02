@@ -1,4 +1,5 @@
 "use client";
+import { T, useI18n } from "@/components/i18n/LocaleProvider";
 
 import { Temporal } from "@js-temporal/polyfill";
 import { calculateNightSegments as calculateSharedNightSegments } from "@prophetic-night/night-engine";
@@ -64,7 +65,12 @@ type LivePrayerTimes = {
 };
 
 type CoordinateCalculationResponse = NightCalculationResult & {
-  prayerTimes: { provider: string; calculationMethod: string; timeZone: string };
+  prayerTimes: {
+    provider: string;
+    calculationMethod: string;
+    timeZone: string;
+    dailyPrayerTimes?: LivePrayerTimes["dailyPrayerTimes"];
+  };
 };
 
 const firstAdhanOptions = [15, 20, 30, 45, 60] as const;
@@ -416,6 +422,7 @@ export function PrayerWorkspace({
   children: ReactNode;
   autoLoad?: boolean;
 }) {
+  const { t } = useI18n();
   const [locationId, setLocationId] = useState("gb-london");
   const [countryCode, setCountryCode] = useState("GB");
   const [city, setCity] = useState("London");
@@ -448,6 +455,47 @@ export function PrayerWorkspace({
   // No wake-up buffer is applied until the user explicitly selects one.
   const [wakeBufferMinutes] = useState(0);
   const [timelineView, setTimelineView] = useState<"general" | "dawud" | "prophetic">("general");
+
+  const [draftLoaded, setDraftLoaded] = useState(false);
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem("miqat.public-night.v1");
+      if (raw && raw.length < 4096) {
+        const draft = JSON.parse(raw);
+        if (draft.input) {
+          calculateSharedNightSegments(draft.input);
+          new Intl.DateTimeFormat("en", { timeZone: draft.input.timeZone }).format(0);
+          // eslint-disable-next-line react-hooks/set-state-in-effect -- Restore validated browser-only calculator context.
+          setSubmitted(draft.input);
+        }
+        if (["general", "dawud", "prophetic"].includes(draft.view)) setTimelineView(draft.view);
+        if (
+          Number.isInteger(draft.firstAdhanMinutes) &&
+          draft.firstAdhanMinutes >= 0 &&
+          draft.firstAdhanMinutes <= 1440
+        )
+          setFirstAdhanMinutes(draft.firstAdhanMinutes);
+      }
+    } catch {
+      // Invalid or unavailable browser storage must never prevent public calculations.
+    }
+    setDraftLoaded(true);
+  }, []);
+  useEffect(() => {
+    if (!draftLoaded) return;
+    try {
+      sessionStorage.setItem(
+        "miqat.public-night.v1",
+        JSON.stringify({
+          input: submitted,
+          view: timelineView,
+          firstAdhanMinutes,
+        }),
+      );
+    } catch {
+      // Storage is optional; calculations continue in component state.
+    }
+  }, [draftLoaded, submitted, timelineView, firstAdhanMinutes]);
 
   const calculation = useMemo(() => {
     if (!submitted) return { result: null, engineResult: null, error: "" };
@@ -524,6 +572,7 @@ export function PrayerWorkspace({
           calculationMethod: body.prayerTimes.calculationMethod,
           juristicSchool: "Provider default",
           source: body.prayerTimes.provider,
+          dailyPrayerTimes: body.prayerTimes.dailyPrayerTimes,
           serviceDate,
         });
         setSubmitted({
@@ -714,16 +763,22 @@ export function PrayerWorkspace({
   const settings = (
     <section className="min-w-0 border border-white/10 bg-[#0c2229] p-4 shadow-2xl sm:p-10">
       <div className="mb-8">
-        <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">01 / CALCULATE</p>
-        <h2 className="mt-2 font-serif text-3xl">Set the night interval</h2>
+        <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">
+          <T>{"01 / CALCULATE"}</T>
+        </p>
+        <h2 className="mt-2 font-serif text-3xl">
+          <T>{"Set the night interval"}</T>
+        </h2>
       </div>
 
       <p className="mb-7 inline-block border border-[#d0ae67]/30 bg-[#d0ae67]/5 px-4 py-2 text-sm font-semibold text-[#d0ae67]">
-        {prayerTimeSource === "aladhan"
-          ? "Live prayer times · AlAdhan"
-          : prayerTimeSource === "coordinates"
-            ? "Live prayer times · AlAdhan coordinates"
-            : "Trusted timetable · Manual"}
+        <T>
+          {prayerTimeSource === "aladhan"
+            ? "Live prayer times · AlAdhan"
+            : prayerTimeSource === "coordinates"
+              ? "Live prayer times · AlAdhan coordinates"
+              : "Trusted timetable · Manual"}
+        </T>
       </p>
 
       <form
@@ -731,7 +786,7 @@ export function PrayerWorkspace({
         className="grid min-w-0 gap-4 md:grid-cols-2 xl:grid-cols-4 xl:items-start"
       >
         <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-          Quick location
+          <T>{"Quick location"}</T>
           <select
             value={locationId}
             onChange={(event) => {
@@ -749,15 +804,17 @@ export function PrayerWorkspace({
           >
             {locations.map((location) => (
               <option key={location.id} value={location.id}>
-                {location.id === "custom"
-                  ? "Custom worldwide location"
-                  : `${location.country} — ${location.city}`}
+                {location.id === "custom" ? (
+                  <T>{"Custom worldwide location"}</T>
+                ) : (
+                  `${location.country} — ${location.city}`
+                )}
               </option>
             ))}
           </select>
         </label>
         <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-          Service date
+          <T>{"Service date"}</T>
           <input
             type="date"
             value={serviceDate}
@@ -767,7 +824,7 @@ export function PrayerWorkspace({
           />
         </label>
         <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-          Prayer-time source
+          <T>{"Prayer-time source"}</T>
           <select
             value={prayerTimeSource}
             onChange={(event) =>
@@ -775,13 +832,19 @@ export function PrayerWorkspace({
             }
             className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
           >
-            <option value="aladhan">AlAdhan astronomical calculation</option>
-            <option value="coordinates">Precise coordinates</option>
-            <option value="manual">Trusted timetable / manual times</option>
+            <option value="aladhan">
+              <T>{"AlAdhan astronomical calculation"}</T>
+            </option>
+            <option value="coordinates">
+              <T>{"Precise coordinates"}</T>
+            </option>
+            <option value="manual">
+              <T>{"Trusted timetable / manual times"}</T>
+            </option>
           </select>
         </label>
         <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-          Wake before Fajr
+          <T>{"Wake before Fajr"}</T>
           <select
             value={firstAdhanMinutes ?? ""}
             onChange={(event) =>
@@ -789,10 +852,13 @@ export function PrayerWorkspace({
             }
             className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
           >
-            <option value="">Off</option>
+            <option value="">
+              <T>{"Off"}</T>
+            </option>
             {firstAdhanOptions.map((minutes) => (
               <option key={minutes} value={minutes}>
-                {minutes} minutes before Fajr
+                {minutes}
+                <T>{" minutes before Fajr"}</T>
               </option>
             ))}
           </select>
@@ -800,7 +866,7 @@ export function PrayerWorkspace({
         {prayerTimeSource === "coordinates" && (
           <>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Latitude
+              <T>{"Latitude"}</T>
               <input
                 type="number"
                 inputMode="decimal"
@@ -817,7 +883,7 @@ export function PrayerWorkspace({
               />
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Longitude
+              <T>{"Longitude"}</T>
               <input
                 type="number"
                 inputMode="decimal"
@@ -834,7 +900,7 @@ export function PrayerWorkspace({
               />
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              IANA timezone
+              <T>{"IANA timezone"}</T>
               <input
                 value={coordinateTimeZone}
                 onChange={(event) => setCoordinateTimeZone(event.target.value)}
@@ -848,26 +914,28 @@ export function PrayerWorkspace({
               disabled={locating}
               className="w-full border border-[#d0ae67] px-5 py-3 font-semibold text-[#d0ae67] disabled:opacity-60 lg:w-auto"
             >
-              {locating ? "Finding precise location…" : "Use my precise location"}
+              <T>{locating ? "Finding precise location…" : "Use my precise location"}</T>
             </button>
             <p className="text-xs text-[#8ea29d] md:col-span-2 xl:col-span-4" aria-live="polite">
-              {locationAccuracy === null
-                ? "Location permission is optional; decimal coordinates can always be entered manually."
-                : `Location acquired with approximately ${Math.round(locationAccuracy)} m accuracy.`}
+              <T values={{ accuracy: Math.round(locationAccuracy ?? 0) }}>
+                {locationAccuracy === null
+                  ? "Location permission is optional; decimal coordinates can always be entered manually."
+                  : "Location acquired with approximately {accuracy} m accuracy."}
+              </T>
             </p>
           </>
         )}
         {prayerTimeSource === "manual" && (
           <>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Demonstration fixture
+              <T>{"Demonstration fixture"}</T>
               <select
                 defaultValue=""
                 onChange={(event) => loadFixture(event.target.value)}
                 className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
               >
                 <option value="" disabled>
-                  Choose demonstration times
+                  <T>{"Choose demonstration times"}</T>
                 </option>
                 {Object.entries(demoPrayerTimes).map(([id, fixture]) => (
                   <option key={id} value={id}>
@@ -876,11 +944,11 @@ export function PrayerWorkspace({
                 ))}
               </select>
               <span className="text-xs text-[#8ea29d]">
-                Demonstration only—not a live timetable.
+                <T>{"Demonstration only—not a live timetable."}</T>
               </span>
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              IANA timezone
+              <T>{"IANA timezone"}</T>
               <input
                 value={manualTimeZone}
                 onChange={(event) => setManualTimeZone(event.target.value)}
@@ -890,7 +958,7 @@ export function PrayerWorkspace({
               />
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Maghrib
+              <T>{"Maghrib"}</T>
               <input
                 type="time"
                 step="1"
@@ -901,7 +969,10 @@ export function PrayerWorkspace({
               />
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Following Fajr <span className="text-[#8ea29d]">(+1 day)</span>
+              <T>{"Following Fajr "}</T>
+              <span className="text-[#8ea29d]">
+                <T>{"(+1 day)"}</T>
+              </span>
               <input
                 type="time"
                 step="1"
@@ -916,7 +987,7 @@ export function PrayerWorkspace({
         {prayerTimeSource === "aladhan" && (
           <>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              Country or territory
+              <T>{"Country or territory"}</T>
               <select
                 value={countryCode}
                 onChange={(event) => {
@@ -934,7 +1005,7 @@ export function PrayerWorkspace({
               </select>
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              City
+              <T>{"City"}</T>
               <input
                 value={city}
                 onChange={(event) => {
@@ -948,7 +1019,10 @@ export function PrayerWorkspace({
               />
             </label>
             <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-              State / province <span className="text-[#8ea29d]">(optional)</span>
+              <T>{"State / province "}</T>
+              <span className="text-[#8ea29d]">
+                <T>{"(optional)"}</T>
+              </span>
               <input
                 value={state}
                 onChange={(event) => setState(event.target.value)}
@@ -961,7 +1035,7 @@ export function PrayerWorkspace({
         )}
         {prayerTimeSource === "aladhan" && (
           <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-            Calculation method
+            <T>{"Calculation method"}</T>
             <select
               value={method}
               onChange={(event) => setMethod(Number(event.target.value))}
@@ -978,53 +1052,71 @@ export function PrayerWorkspace({
         {prayerTimeSource === "aladhan" && (
           <details className="md:col-span-2 xl:col-span-4 border border-white/10 bg-[#06151a] p-4">
             <summary className="cursor-pointer font-semibold text-[#d0ae67]">
-              Advanced AlAdhan settings
+              <T>{"Advanced AlAdhan settings"}</T>
             </summary>
             <div className="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
               <label className="grid gap-2 text-sm text-[#c8d4d0]">
-                High-latitude adjustment
+                <T>{"High-latitude adjustment"}</T>
                 <select
                   value={latitudeAdjustmentMethod}
                   onChange={(event) => setLatitudeAdjustmentMethod(Number(event.target.value))}
                   className="border border-white/20 bg-[#0c2229] px-3 py-3"
                 >
-                  <option value={1}>Middle of the night</option>
-                  <option value={2}>One seventh of the night</option>
-                  <option value={3}>Angle based</option>
+                  <option value={1}>
+                    <T>{"Middle of the night"}</T>
+                  </option>
+                  <option value={2}>
+                    <T>{"One seventh of the night"}</T>
+                  </option>
+                  <option value={3}>
+                    <T>{"Angle based"}</T>
+                  </option>
                 </select>
               </label>
               <label className="grid gap-2 text-sm text-[#c8d4d0]">
-                Midnight mode
+                <T>{"Midnight mode"}</T>
                 <select
                   value={midnightMode}
                   onChange={(event) => setMidnightMode(Number(event.target.value))}
                   className="border border-white/20 bg-[#0c2229] px-3 py-3"
                 >
-                  <option value={0}>Standard</option>
-                  <option value={1}>Jafari</option>
+                  <option value={0}>
+                    <T>{"Standard"}</T>
+                  </option>
+                  <option value={1}>
+                    <T>{"Jafari"}</T>
+                  </option>
                 </select>
               </label>
               <label className="grid gap-2 text-sm text-[#c8d4d0]">
-                Shafaq
+                <T>{"Shafaq"}</T>
                 <select
                   value={shafaq}
                   onChange={(event) => setShafaq(event.target.value)}
                   className="border border-white/20 bg-[#0c2229] px-3 py-3"
                 >
-                  <option value="general">General</option>
-                  <option value="ahmer">Ahmer</option>
-                  <option value="abyad">Abyad</option>
+                  <option value="general">
+                    <T>{"General"}</T>
+                  </option>
+                  <option value="ahmer">
+                    <T>{"Ahmer"}</T>
+                  </option>
+                  <option value="abyad">
+                    <T>{"Abyad"}</T>
+                  </option>
                 </select>
               </label>
             </div>
             {method === 99 && (
               <fieldset className="mt-5">
-                <legend className="text-sm font-semibold text-white">Custom method settings</legend>
+                <legend className="text-sm font-semibold text-white">
+                  <T>{"Custom method settings"}</T>
+                </legend>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   {["Fajr angle", "Maghrib angle / minutes", "Isha angle / minutes"].map(
                     (label, index) => (
                       <label key={label} className="grid gap-2 text-xs text-[#c8d4d0]">
-                        {label}
+                        <T>{label}</T>
                         <input
                           type="number"
                           min={0}
@@ -1045,9 +1137,11 @@ export function PrayerWorkspace({
               </fieldset>
             )}
             <fieldset className="mt-5">
-              <legend className="text-sm font-semibold text-white">Minute tuning</legend>
+              <legend className="text-sm font-semibold text-white">
+                <T>{"Minute tuning"}</T>
+              </legend>
               <p className="mt-1 text-xs text-[#8ea29d]">
-                Use only to match a verified local authority timetable.
+                <T>{"Use only to match a verified local authority timetable."}</T>
               </p>
               <div className="mt-3 grid gap-3 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
                 {[
@@ -1062,7 +1156,7 @@ export function PrayerWorkspace({
                   "Midnight",
                 ].map((label, index) => (
                   <label key={label} className="grid gap-2 text-xs text-[#c8d4d0]">
-                    {label}
+                    <T>{label}</T>
                     <input
                       type="number"
                       min={-60}
@@ -1084,14 +1178,18 @@ export function PrayerWorkspace({
         )}
         {prayerTimeSource === "aladhan" && (
           <label className="grid min-w-0 gap-2 text-sm text-[#c8d4d0]">
-            Asr juristic method
+            <T>{"Asr juristic method"}</T>
             <select
               value={school}
               onChange={(event) => setSchool(Number(event.target.value))}
               className="w-full min-w-0 border border-white/20 bg-[#06151a] px-3 py-3 text-white outline-none focus:border-[#d0ae67] sm:px-4"
             >
-              <option value={0}>Standard — Shafi, Maliki, Hanbali</option>
-              <option value={1}>Hanafi</option>
+              <option value={0}>
+                <T>{"Standard — Shafi, Maliki, Hanbali"}</T>
+              </option>
+              <option value={1}>
+                <T>{"Hanafi"}</T>
+              </option>
             </select>
           </label>
         )}
@@ -1100,26 +1198,29 @@ export function PrayerWorkspace({
           disabled={loadingLive}
           className="w-full bg-[#d0ae67] px-5 py-3 font-semibold text-[#102027] transition hover:bg-[#e2c27c] disabled:cursor-wait disabled:opacity-60 lg:w-auto lg:px-8"
         >
-          {loadingLive ? "Calculating…" : "Calculate this night"}
+          <T>{loadingLive ? "Calculating…" : "Calculate this night"}</T>
         </button>
       </form>
       <p className="mt-4 text-xs leading-5 text-[#8ea29d]">
-        {prayerTimeSource === "aladhan"
-          ? "AlAdhan calculates today’s Maghrib and following Fajr astronomically. Choose the method used by your local authority; it is not interchangeable with a mosque-published timetable."
-          : prayerTimeSource === "coordinates"
-            ? "AlAdhan uses your exact coordinates and selected timezone to source Maghrib and the following day’s Fajr. Verify the calculation method against your local authority."
-            : "Enter Maghrib and the following day’s Fajr exactly as published by a trusted timetable. The engine performs arithmetic only and does not independently choose prayer times."}
+        <T>
+          {prayerTimeSource === "aladhan"
+            ? "AlAdhan calculates today’s Maghrib and following Fajr astronomically. Choose the method used by your local authority; it is not interchangeable with a mosque-published timetable."
+            : prayerTimeSource === "coordinates"
+              ? "AlAdhan uses your exact coordinates and selected timezone to source Maghrib and the following day’s Fajr. Verify the calculation method against your local authority."
+              : "Enter Maghrib and the following day’s Fajr exactly as published by a trusted timetable. The engine performs arithmetic only and does not independently choose prayer times."}
+        </T>
       </p>
       {providerInfo && (
         <div className="mt-5 border border-[#d0ae67]/30 bg-[#d0ae67]/5 p-4 text-sm">
           <p className="font-semibold text-[#d0ae67]">{providerInfo.location}</p>
           <p className="mt-2 text-base font-semibold text-white">
-            Night of {formatCalendarDate(providerInfo.maghrib, providerInfo.timeZone)}
+            <T>{"Night of "}</T>
+            {formatCalendarDate(providerInfo.maghrib, providerInfo.timeZone)}
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
             <div className="border border-white/10 bg-[#06151a] p-3">
               <p className="text-xs uppercase tracking-[0.16em] text-[#8ea29d]">
-                Night begins · Maghrib
+                <T>{"Night begins · Maghrib"}</T>
               </p>
               <p className="mt-1 text-xl font-semibold text-[#d0ae67]">
                 {formatPrayerTime(providerInfo.maghrib, providerInfo.timeZone)}
@@ -1133,7 +1234,7 @@ export function PrayerWorkspace({
             </span>
             <div className="border border-white/10 bg-[#06151a] p-3">
               <p className="text-xs uppercase tracking-[0.16em] text-[#8ea29d]">
-                Night ends · following Fajr
+                <T>{"Night ends · following Fajr"}</T>
               </p>
               <p className="mt-1 text-xl font-semibold text-[#d0ae67]">
                 {formatPrayerTime(providerInfo.fajr, providerInfo.timeZone)}
@@ -1146,14 +1247,14 @@ export function PrayerWorkspace({
         </div>
       )}
       {providerError && (
-        <p role="alert" className="mt-6 border-l-2 border-red-400 bg-red-950/30 p-4 text-red-200">
-          {providerError}
+        <p role="alert" className="mt-6 border-s-2 border-red-400 bg-red-950/30 p-4 text-red-200">
+          <T>{providerError}</T>
         </p>
       )}
 
       {calculation.error && (
-        <p role="alert" className="mt-6 border-l-2 border-red-400 bg-red-950/30 p-4 text-red-200">
-          {calculation.error}
+        <p role="alert" className="mt-6 border-s-2 border-red-400 bg-red-950/30 p-4 text-red-200">
+          <T>{calculation.error}</T>
         </p>
       )}
     </section>
@@ -1163,9 +1264,11 @@ export function PrayerWorkspace({
       {result && (
         <>
           <section aria-labelledby="night-summary">
-            <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">02 / NIGHT MAP</p>
+            <p className="text-xs font-bold tracking-[0.2em] text-[#d0ae67]">
+              <T>{"02 / NIGHT MAP"}</T>
+            </p>
             <h2 id="night-summary" className="mt-2 font-serif text-3xl sm:text-4xl">
-              One night, three complementary views
+              <T>{"One night, three complementary views"}</T>
             </h2>
             <p className="mt-3 text-[#9baca7]">
               {formatCalendarDate(result.start, displayTimeZone)}
@@ -1185,7 +1288,7 @@ export function PrayerWorkspace({
             <div
               className="mt-8 grid overflow-hidden border border-white/15 sm:grid-cols-3"
               role="tablist"
-              aria-label="Night timeline interpretation"
+              aria-label={t("Night timeline interpretation")}
             >
               {(
                 [
@@ -1205,21 +1308,24 @@ export function PrayerWorkspace({
                   className={`px-4 py-4 text-sm font-semibold transition focus-visible:outline-2 focus-visible:outline-offset-[-3px] focus-visible:outline-[#d0ae67] ${
                     timelineView === view
                       ? "bg-[#d0ae67] text-[#102027]"
-                      : "border-white/10 bg-[#06151a] text-[#c8d4d0] hover:bg-[#0c2229] sm:border-l"
+                      : "border-white/10 bg-[#06151a] text-[#c8d4d0] hover:bg-[#0c2229] sm:border-s"
                   }`}
                 >
-                  {label}
+                  <T>{label}</T>
                 </button>
               ))}
             </div>
             <details className="mt-4 w-fit max-w-full border border-[#d0ae67]/30 bg-[#d0ae67]/5 p-3 text-sm">
               <summary className="cursor-pointer font-semibold text-[#d0ae67]">
-                <span aria-hidden="true">ⓘ </span>About these views
+                <span aria-hidden="true">ⓘ </span>
+                <T>{"About these views"}</T>
               </summary>
               <p className="mt-3 leading-6 text-[#b9c6c2]">
-                These views describe the same night using different levels of detail. Thirds are the
-                general division. Sixths are used here to clearly visualise the sleep–prayer–sleep
-                pattern of Dawud عليه السلام.
+                <T>
+                  {
+                    "These views describe the same night using different levels of detail. Thirds are the general division. Sixths are used here to clearly visualise the sleep–prayer–sleep pattern of Dawud عليه السلام."
+                  }
+                </T>
               </p>
             </details>
           </section>
@@ -1231,12 +1337,17 @@ export function PrayerWorkspace({
               aria-labelledby="timeline-tab-general"
             >
               <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
-                GENERAL NIGHT DIVISION
+                <T>{"GENERAL NIGHT DIVISION"}</T>
               </p>
-              <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Conventional Night Division</h2>
+              <h2 className="mt-2 font-serif text-3xl sm:text-4xl">
+                <T>{"Conventional Night Division"}</T>
+              </h2>
               <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
-                This is the common way of dividing the night when discussing the first, middle, and
-                last third of the night.
+                <T>
+                  {
+                    "This is the common way of dividing the night when discussing the first, middle, and last third of the night."
+                  }
+                </T>
               </p>
               <div className="mt-7 grid min-w-0 gap-3 md:grid-cols-3">
                 {[
@@ -1265,7 +1376,9 @@ export function PrayerWorkspace({
                     }`}
                   >
                     <span className="text-sm text-[#d0ae67]">0{index + 1}</span>
-                    <h3 className="mt-3 text-xl font-semibold">{third.label}</h3>
+                    <h3 className="mt-3 text-xl font-semibold">
+                      <T>{third.label}</T>
+                    </h3>
                     <p className="mt-6 text-sm">
                       {formatTime(third.start, displayTimeZone)} →{" "}
                       {formatTime(third.end, displayTimeZone)}
@@ -1273,8 +1386,8 @@ export function PrayerWorkspace({
                   </article>
                 ))}
               </div>
-              <p className="mt-5 border-l-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm">
-                The last third begins at{" "}
+              <p className="mt-5 border-s-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm">
+                <T>{"The last third begins at"}</T>{" "}
                 <strong className="text-[#d0ae67]">
                   {formatTime(result.lastThirdStart, displayTimeZone)}
                 </strong>
@@ -1286,12 +1399,17 @@ export function PrayerWorkspace({
           {timelineView === "dawud" && (
             <section id="timeline-panel-dawud" role="tabpanel" aria-labelledby="timeline-tab-dawud">
               <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
-                DAWUD عليه السلام PRAYER PATTERN
+                <T>{"DAWUD عليه السلام PRAYER PATTERN"}</T>
               </p>
-              <h2 className="mt-2 font-serif text-3xl sm:text-4xl">Dawud عليه السلام Pattern</h2>
+              <h2 className="mt-2 font-serif text-3xl sm:text-4xl">
+                <T>{"Dawud عليه السلام Pattern"}</T>
+              </h2>
               <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
-                The night is divided into six equal parts here to illustrate the hadith describing
-                Dawud عليه السلام: he slept half the night, prayed one third, then slept one sixth.
+                <T>
+                  {
+                    "The night is divided into six equal parts here to illustrate the hadith describing Dawud عليه السلام: he slept half the night, prayed one third, then slept one sixth."
+                  }
+                </T>
               </p>
               <div className="mt-8 grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
                 {result.segments.map((segment) => (
@@ -1304,8 +1422,13 @@ export function PrayerWorkspace({
                     }`}
                   >
                     <span className="font-serif text-3xl text-[#d0ae67]">0{segment.number}</span>
-                    <h3 className="mt-6 text-lg font-semibold">Part {segment.number}</h3>
-                    <p className="mt-1 text-sm text-[#a8b8b3]">{segment.activity}</p>
+                    <h3 className="mt-6 text-lg font-semibold">
+                      <T>{"Part "}</T>
+                      {segment.number}
+                    </h3>
+                    <p className="mt-1 text-sm text-[#a8b8b3]">
+                      <T>{segment.activity}</T>
+                    </p>
                     <div className="mt-auto pt-8 text-sm">
                       <time className="block">{formatTime(segment.start, displayTimeZone)}</time>
                       <time className="block text-[#9baca7]">
@@ -1322,7 +1445,9 @@ export function PrayerWorkspace({
                   ["Sleep · Part 6", result.finalSixthStart, result.end],
                 ].map(([label, start, end]) => (
                   <div key={label} className="border border-white/10 bg-[#06151a] p-4">
-                    <dt className="font-semibold">{label}</dt>
+                    <dt className="font-semibold">
+                      <T>{label}</T>
+                    </dt>
                     <dd className="mt-2 text-sm text-[#d0ae67]">
                       {formatTime(start, displayTimeZone)} → {formatTime(end, displayTimeZone)}
                     </dd>
@@ -1330,8 +1455,11 @@ export function PrayerWorkspace({
                 ))}
               </dl>
               <p className="mt-5 text-sm leading-6 text-[#8ea29d]">
-                Reference: Ṣaḥīḥ al-Bukhārī 1131. This is an informational visualisation, not a
-                compulsory practice or religious ruling.
+                <T>
+                  {
+                    "Reference: Ṣaḥīḥ al-Bukhārī 1131. This is an informational visualisation, not a compulsory practice or religious ruling."
+                  }
+                </T>
               </p>
             </section>
           )}
@@ -1343,47 +1471,56 @@ export function PrayerWorkspace({
               aria-labelledby="timeline-tab-prophetic"
             >
               <p className="text-xs font-bold tracking-[0.18em] text-[#d0ae67]">
-                PROPHETIC QIYAM / TAHAJJUD
+                <T>{"PROPHETIC QIYAM / TAHAJJUD"}</T>
               </p>
               <h2 className="mt-2 font-serif text-3xl sm:text-4xl">
-                Prophetic Qiyam / Tahajjud Timeline
+                <T>{"Prophetic Qiyam / Tahajjud Timeline"}</T>
               </h2>
               <p className="mt-3 max-w-3xl leading-7 text-[#9baca7]">
-                The Prophet Muhammad ﷺ did not restrict his night prayer to one fixed point of the
-                night. Authentic narrations describe him sleeping, waking, and praying during the
-                night, with the observed timing varying across different reports and occasions.
+                <T>
+                  {
+                    "The Prophet Muhammad ﷺ did not restrict his night prayer to one fixed point of the night. Authentic narrations describe him sleeping, waking, and praying during the night, with the observed timing varying across different reports and occasions."
+                  }
+                </T>
               </p>
               <div className="mt-8 border border-white/10 bg-[#0c2229] p-5 sm:p-8">
-                <div className="flex items-center gap-3" aria-label="Maghrib to Fajr night span">
+                <div
+                  className="flex items-center gap-3"
+                  aria-label={t("Maghrib to Fajr night span")}
+                >
                   <span className="h-3 w-3 shrink-0 rounded-full bg-[#d0ae67]" />
                   <span className="h-1 flex-1 bg-gradient-to-r from-[#d0ae67] via-[#38606a] to-[#d0ae67]" />
                   <span className="h-3 w-3 shrink-0 rounded-full bg-[#d0ae67]" />
                 </div>
                 <div className="mt-3 flex justify-between gap-4 text-sm">
                   <p>
-                    <strong className="block">Maghrib · night begins</strong>
+                    <strong className="block">
+                      <T>{"Maghrib · night begins"}</T>
+                    </strong>
                     {formatTime(result.start, displayTimeZone)}
                   </p>
-                  <p className="text-right">
-                    <strong className="block">Fajr · night ends</strong>
+                  <p className="text-end">
+                    <strong className="block">
+                      <T>{"Fajr · night ends"}</T>
+                    </strong>
                     {formatTime(result.end, displayTimeZone)}
                   </p>
                 </div>
                 <div className="mx-auto mt-8 max-w-3xl text-center">
                   <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#d0ae67]">
-                    Timing varied across authentic reports
+                    <T>{"Timing varied across authentic reports"}</T>
                   </p>
                   <p className="mt-3 leading-7 text-[#b9c6c2]">
-                    Anas رضي الله عنه reported that one could observe him praying at night on some
-                    occasions and sleeping on others. ‘Ā’ishah رضي الله عنها reported his Witr at
-                    different hours of the night. Other individual reports describe particular
-                    nights in more detail; they are evidence of those occasions, not one fixed
-                    nightly timetable.
+                    <T>
+                      {
+                        "Anas رضي الله عنه reported that one could observe him praying at night on some occasions and sleeping on others. ‘Ā’ishah رضي الله عنها reported his Witr at different hours of the night. Other individual reports describe particular nights in more detail; they are evidence of those occasions, not one fixed nightly timetable."
+                      }
+                    </T>
                   </p>
                 </div>
                 <div
                   className="mt-7 grid gap-2 sm:grid-cols-3"
-                  aria-label="Variation in reported Qiyam / Tahajjud timing"
+                  aria-label={t("Variation in reported Qiyam / Tahajjud timing")}
                 >
                   {[
                     ["Earlier", "Witr was not confined to the end"],
@@ -1391,21 +1528,26 @@ export function PrayerWorkspace({
                     ["Later", "Some reports describe prayer in the last part"],
                   ].map(([period, explanation]) => (
                     <div key={period} className="border border-white/10 bg-[#06151a] p-4">
-                      <strong className="text-[#d0ae67]">{period} night</strong>
-                      <p className="mt-2 text-sm leading-5 text-[#9baca7]">{explanation}</p>
+                      <strong className="text-[#d0ae67]">
+                        <T>{`${period} night`}</T>
+                      </strong>
+                      <p className="mt-2 text-sm leading-5 text-[#9baca7]">
+                        <T>{explanation}</T>
+                      </p>
                     </div>
                   ))}
                 </div>
-                <p className="mt-7 border-l-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm leading-6 text-[#c8d4d0]">
-                  This varied Prophetic Qiyam / Tahajjud evidence is distinct from the separately
-                  narrated Dāwūd عليه السلام pattern: sleep half the night, pray one third, then
-                  sleep one sixth. This view does not impose that six-part pattern on the Prophet
-                  Muhammad ﷺ.
+                <p className="mt-7 border-s-2 border-[#d0ae67] bg-[#d0ae67]/5 p-4 text-sm leading-6 text-[#c8d4d0]">
+                  <T>
+                    {
+                      "This varied Prophetic Qiyam / Tahajjud evidence is distinct from the separately narrated Dāwūd عليه السلام pattern: sleep half the night, pray one third, then sleep one sixth. This view does not impose that six-part pattern on the Prophet Muhammad ﷺ."
+                    }
+                  </T>
                 </p>
               </div>
               <div className="mt-6" aria-labelledby="prophetic-qiyam-evidence">
                 <h3 id="prophetic-qiyam-evidence" className="text-lg font-semibold">
-                  Evidence
+                  <T>{"Evidence"}</T>
                 </h3>
                 <ul className="mt-3 grid gap-3 text-sm leading-6 text-[#aebcb8] lg:grid-cols-2">
                   <li className="border border-white/10 p-4">
@@ -1415,11 +1557,14 @@ export function PrayerWorkspace({
                       rel="noreferrer"
                       className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
                     >
-                      Ṣaḥīḥ al-Bukhārī 1141
+                      <T>{"Ṣaḥīḥ al-Bukhārī 1141"}</T>
                     </a>
                     <p className="mt-2">
-                      Anas ibn Mālik رضي الله عنه described observing the Prophet ﷺ both praying and
-                      sleeping at night, rather than at one consistently observable time.
+                      <T>
+                        {
+                          "Anas ibn Mālik رضي الله عنه described observing the Prophet ﷺ both praying and sleeping at night, rather than at one consistently observable time."
+                        }
+                      </T>
                     </p>
                   </li>
                   <li className="border border-white/10 p-4">
@@ -1429,11 +1574,14 @@ export function PrayerWorkspace({
                       rel="noreferrer"
                       className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
                     >
-                      Ṣaḥīḥ al-Bukhārī 996
+                      <T>{"Ṣaḥīḥ al-Bukhārī 996"}</T>
                     </a>
                     <p className="mt-2">
-                      ‘Ā’ishah رضي الله عنها reported that his Witr occurred at varying hours,
-                      extending from after ‘Ishā’ to the last hour of the night.
+                      <T>
+                        {
+                          "‘Ā’ishah رضي الله عنها reported that his Witr occurred at varying hours, extending from after ‘Ishā’ to the last hour of the night."
+                        }
+                      </T>
                     </p>
                   </li>
                   <li className="border border-white/10 p-4">
@@ -1443,12 +1591,14 @@ export function PrayerWorkspace({
                       rel="noreferrer"
                       className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
                     >
-                      Ṣaḥīḥ al-Bukhārī 1146
+                      <T>{"Ṣaḥīḥ al-Bukhārī 1146"}</T>
                     </a>
                     <p className="mt-2">
-                      ‘Ā’ishah رضي الله عنها described a particular pattern of sleeping early,
-                      rising in the last part to pray, returning to bed, and then responding to the
-                      call for Fajr.
+                      <T>
+                        {
+                          "‘Ā’ishah رضي الله عنها described a particular pattern of sleeping early, rising in the last part to pray, returning to bed, and then responding to the call for Fajr."
+                        }
+                      </T>
                     </p>
                   </li>
                   <li className="border border-white/10 p-4">
@@ -1458,17 +1608,23 @@ export function PrayerWorkspace({
                       rel="noreferrer"
                       className="font-semibold text-[#d0ae67] underline-offset-4 hover:underline"
                     >
-                      Ṣaḥīḥ Muslim 763b
+                      <T>{"Ṣaḥīḥ Muslim 763b"}</T>
                     </a>
                     <p className="mt-2">
-                      Ibn ‘Abbās رضي الله عنهما observed the Prophet ﷺ sleep until around
-                      midnight—slightly before or after—then rise, prepare, and pray.
+                      <T>
+                        {
+                          "Ibn ‘Abbās رضي الله عنهما observed the Prophet ﷺ sleep until around midnight—slightly before or after—then rise, prepare, and pray."
+                        }
+                      </T>
                     </p>
                   </li>
                 </ul>
                 <p className="mt-3 text-xs leading-5 text-[#8ea29d]">
-                  These narrations report different observations and specific occasions. They do not
-                  establish a single exact fractional schedule for every night.
+                  <T>
+                    {
+                      "These narrations report different observations and specific occasions. They do not establish a single exact fractional schedule for every night."
+                    }
+                  </T>
                 </p>
               </div>
             </section>

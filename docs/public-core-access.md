@@ -1,0 +1,23 @@
+# Public core and account access
+
+`/app`, `/sixth`, `/app/prayers` and `/app/sixth` are public calculation entry points. Free entry links open `/app`. Guests reuse the existing PrayerWorkspace and night engine without fetching account preferences or creating database records. A completed night input and selected timeline view are stored in tab-scoped sessionStorage; storage failure does not block calculation. Account settings are not silently overwritten from this draft.
+
+Account, settings, calendar, automation and onboarding pages call `requireAccountPage`. Login/signup preserve an allowlisted internal `next` destination. Calendar setup keeps its section destination, reminders return to automation setup, and saving account settings returns to the existing settings editor for explicit review and save. After a provider calculation, “Save prayer source to account” stores an explicit pending save in sessionStorage, signs guests in with `/sixth?save=1`, and resumes through the existing revision-checked preferences API. It saves the source and timezone, not an archive of individual nights. Miqāt does not currently have an account archive for individual manual night calculations; this change does not invent one. Guest night results remain available at `/sixth` after authentication.
+
+Existing API session, ownership, same-origin, entitlement and calendar-write checks are unchanged. Free accounts can save preferences and use manual ICS export. Calendar analysis requires Pro or an existing valid trial; managed writes additionally require the existing rollout switches and consent. Browser-exported ICS notifications remain local to the external calendar application.
+
+Stripe checkout/portal/customer/subscription/webhook server code is unchanged. BillingButton now marks automatic checkout as started inside the scheduled callback so React Strict Mode effect cleanup cannot cancel the return-from-auth handoff permanently. The existing BillingButton sends guests to sign-in with `/pricing?upgrade=1`, then resumes checkout after login or signup.
+
+## Password reset diagnosis
+
+Production configuration was inspected with `pnpm dlx vercel env ls production` for the linked `sixth-of-the-night` project. `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM`, `SMTP_PORT`, and `APP_ORIGIN` were absent. `emailDelivery()` in `src/lib/email/delivery.server.ts` throws `EMAIL_NOT_CONFIGURED` for the missing required SMTP settings. The forgot-password route catches this and returns 503 before token creation or SMTP access. This is custom Postgres/session authentication, not a Supabase/Clerk/Neon Auth reset flow; the Neon Auth environment entries are not used here.
+
+Manual configuration required:
+
+1. In your chosen SMTP provider, verify your sending address/domain and configure the required DNS records. Obtain the provider's SMTP host, username and password. No SMTP vendor has been configured in this repository or the inspected production environment.
+2. Vercel → `sixth-of-the-night` → Settings → Environment Variables → Production: add `SMTP_HOST`, `SMTP_USER`, `SMTP_PASSWORD`, `MAIL_FROM` (verified sender), and `SMTP_PORT` (`465` for TLS or `587` for STARTTLS). Keep credentials server-only; do not use `NEXT_PUBLIC_` names.
+3. Set `APP_ORIGIN=https://sixth-of-the-night.vercel.app` (or the canonical production domain if you change it). It must be an origin with no path, query, or fragment. Local development uses `http://localhost:3000`; configure development SMTP separately. No auth-provider redirect allowlist applies to this custom reset route.
+4. Redeploy. Request a reset for a controlled test account and verify inbox delivery. The application uses a plain-text email template in the forgot-password route, not an external auth-provider template.
+5. Verify one-hour expiry, single use, password change and existing-session revocation. Monitor `password_reset_configuration_missing` and `password_reset_delivery_failed` server log events. Log events never include email addresses, tokens, passwords, or SMTP credentials.
+
+Configured requests have the same generic response for missing accounts, throttling, and per-account delivery failures. This avoids revealing account existence through SMTP failures; request acceptance is not delivery confirmation. Missing global configuration returns 503, malformed email returns 400, and cross-origin requests return 403. Tokens are random, stored only as SHA-256 hashes, single-use, expire after one hour, and successful resets revoke existing sessions. The reset page sends no referrer and is marked noindex. No real inbox delivery can be certified until SMTP is configured.
